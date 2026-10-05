@@ -54,6 +54,11 @@ public class Sync {
                 corpo.put("token", token);
                 corpo.put("days", dias);
                 String resp = postar(url, corpo.toString());
+                if (resp.trim().startsWith("<")) {
+                    msg = "A planilha devolveu uma página da web, não a resposta. Confira se a implantação está como \"Qualquer pessoa\" e se o link termina em /exec.";
+                    p.edit().putString("ultimo", msg).apply();
+                    return msg;
+                }
                 JSONObject r = new JSONObject(resp);
                 if (r.optBoolean("ok")) {
                     msg = "Enviado às " + new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date())
