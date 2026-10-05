@@ -46,6 +46,18 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        try { montar(); } catch (Throwable e) {
+            TextView t = new TextView(this);
+            java.io.StringWriter sw = new java.io.StringWriter();
+            e.printStackTrace(new java.io.PrintWriter(sw));
+            t.setText("Erro ao abrir:\n" + sw);
+            t.setTextSize(11);
+            t.setPadding(20, 60, 20, 20);
+            setContentView(t);
+        }
+    }
+
+    private void montar() {
         final android.content.Context ctx = getApplicationContext();
         final Thread.UncaughtExceptionHandler antigo = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
