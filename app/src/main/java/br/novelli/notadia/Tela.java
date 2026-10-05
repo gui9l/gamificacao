@@ -70,7 +70,7 @@ public class Tela {
         int escuro = Color.parseColor("#2E1A0E");
         int suave = Color.parseColor("#8B6F55");
 
-        col.addView(texto("Nota do dia · celular (v3)", 22, true, escuro));
+        col.addView(texto("Nota do dia · celular (v4)", 22, true, escuro));
         col.addView(texto("Envia o seu tempo de tela para a planilha. A Nota do computador lê de lá.", 14, false, suave));
 
         status = texto("", 14, true, escuro);
@@ -108,12 +108,16 @@ public class Tela {
         SharedPreferences p = Sync.prefs(act);
         url.setText(p.getString("url", ""));
         token.setText(p.getString("token", ""));
+        try { if (android.os.Build.VERSION.SDK_INT >= 33) act.requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 7); } catch (Throwable e) { }
         try { SyncJob.agendar(act); Sync.prefs(act).edit().remove("erro").apply(); } catch (Throwable e) { Sync.prefs(act).edit().putString("erro", "agendar: " + e).apply(); }
     }
 
 
     public void atualizarStatus() {
         if (status == null) return;
+        try {
+            if (Sync.prefs(act).getString("url", "").length() > 0 && Sync.temAcessoAoUso(act)) SyncService.iniciar(act);
+        } catch (Throwable e) { Sync.prefs(act).edit().putString("erro", "iniciar: " + e).apply(); }
         SharedPreferences p = Sync.prefs(act);
         String acesso = Sync.temAcessoAoUso(act) ? "Acesso ao uso: liberado" : "Acesso ao uso: FALTA liberar";
         String ult = p.getString("ultimo", "Ainda não enviou.");

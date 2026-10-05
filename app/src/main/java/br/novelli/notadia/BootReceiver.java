@@ -9,5 +9,8 @@ public class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         SyncJob.agendar(context);
+        try {
+            if (Sync.prefs(context).getString("url", "").length() > 0) SyncService.iniciar(context);
+        } catch (Throwable e) { }
     }
 }
