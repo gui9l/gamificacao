@@ -70,7 +70,7 @@ public class Tela {
         int escuro = Color.parseColor("#2E1A0E");
         int suave = Color.parseColor("#8B6F55");
 
-        col.addView(texto("Nota do dia · celular", 22, true, escuro));
+        col.addView(texto("Nota do dia · celular (v3)", 22, true, escuro));
         col.addView(texto("Envia o seu tempo de tela para a planilha. A Nota do computador lê de lá.", 14, false, suave));
 
         status = texto("", 14, true, escuro);
@@ -108,7 +108,7 @@ public class Tela {
         SharedPreferences p = Sync.prefs(act);
         url.setText(p.getString("url", ""));
         token.setText(p.getString("token", ""));
-        try { SyncJob.agendar(act); } catch (Throwable e) { Sync.prefs(act).edit().putString("erro", "agendar: " + e).apply(); }
+        try { SyncJob.agendar(act); Sync.prefs(act).edit().remove("erro").apply(); } catch (Throwable e) { Sync.prefs(act).edit().putString("erro", "agendar: " + e).apply(); }
     }
 
 
