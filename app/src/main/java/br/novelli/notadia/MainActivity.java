@@ -46,6 +46,19 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        final android.content.Context ctx = getApplicationContext();
+        final Thread.UncaughtExceptionHandler antigo = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+            @Override public void uncaughtException(Thread t, Throwable e) {
+                try {
+                    java.io.StringWriter sw = new java.io.StringWriter();
+                    e.printStackTrace(new java.io.PrintWriter(sw));
+                    String tx = sw.toString();
+                    Sync.prefs(ctx).edit().putString("erro", tx.length() > 900 ? tx.substring(0, 900) : tx).commit();
+                } catch (Throwable x) { }
+                if (antigo != null) antigo.uncaughtException(t, e);
+            }
+        });
         ScrollView sv = new ScrollView(this);
         sv.setBackgroundColor(Color.parseColor("#FBF6EA"));
         LinearLayout col = new LinearLayout(this);
@@ -65,7 +78,7 @@ public class MainActivity extends Activity {
         col.addView(texto("Link da planilha (termina em /exec)", 13, true, escuro));
         url = new EditText(this);
         url.setSingleLine(true);
-        url.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
+        url.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         col.addView(url);
 
         col.addView(texto("Código secreto", 13, true, escuro));
@@ -94,7 +107,7 @@ public class MainActivity extends Activity {
         SharedPreferences p = Sync.prefs(this);
         url.setText(p.getString("url", ""));
         token.setText(p.getString("token", ""));
-        SyncJob.agendar(this);
+        try { SyncJob.agendar(this); } catch (Throwable e) { Sync.prefs(this).edit().putString("erro", "agendar: " + e).apply(); }
     }
 
     @Override
@@ -107,7 +120,8 @@ public class MainActivity extends Activity {
         SharedPreferences p = Sync.prefs(this);
         String acesso = Sync.temAcessoAoUso(this) ? "Acesso ao uso: liberado" : "Acesso ao uso: FALTA liberar";
         String ult = p.getString("ultimo", "Ainda não enviou.");
-        status.setText(acesso + "\nÚltimo envio: " + ult);
+        String er = p.getString("erro", "");
+        status.setText(acesso + "\nÚltimo envio: " + ult + (er.isEmpty() ? "" : "\n\nERRO REGISTRADO:\n" + er));
     }
 
     private void salvarEEnviar() {
