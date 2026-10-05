@@ -88,7 +88,7 @@ function doPost(e) {
 }
 
 // Entrega para a Nota do computador: ?token=...&dias=14
-// Uma linha por dia:  data;total;insta_min;tiktok_min;insta_aberturas;tiktok_aberturas
+// Uma linha por dia:  data;total;insta_min;tiktok_min;insta_aberturas;tiktok_aberturas;enviado_em
 function doGet(e) {
   var p = (e && e.parameter) || {};
   if (!tokenOk_(p.token)) {
@@ -99,10 +99,14 @@ function doGet(e) {
   var ultima = s.getLastRow();
   var linhas = [];
   if (ultima > 1) {
-    var v = s.getRange(2, 1, ultima - 1, 6).getValues();
+    var v = s.getRange(2, 1, ultima - 1, 8).getValues();
+    var tz = Session.getScriptTimeZone();
     v.sort(function (a, b) { return String(a[0]) < String(b[0]) ? -1 : 1; });
     v = v.slice(Math.max(0, v.length - dias));
-    v.forEach(function (r) { linhas.push(r.join(';')); });
+    v.forEach(function (r) {
+      var quando = r[7] ? Utilities.formatDate(new Date(r[7]), tz, "yyyy-MM-dd'T'HH:mm") : '';
+      linhas.push(r.slice(0, 6).concat([quando]).join(';'));
+    });
   }
   return ContentService.createTextOutput('OK\n' + linhas.join('\n')).setMimeType(ContentService.MimeType.TEXT);
 }
