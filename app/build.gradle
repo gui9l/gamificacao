@@ -19,6 +19,15 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
+    signingConfigs {
+        debug {
+            storeFile file('chave.jks')
+            storePassword 'android'
+            keyAlias 'chave'
+            keyPassword 'android'
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
