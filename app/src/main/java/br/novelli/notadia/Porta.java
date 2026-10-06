@@ -23,7 +23,6 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import org.json.JSONObject;
 
@@ -58,6 +57,12 @@ public class Porta extends AccessibilityService {
     private long expulsoTs = 0;    // quando foi expulso pelo tempo (0 = não)
     private boolean avisou1min = false;
 
+    // pílula no topo (últimos 2 min)
+    private TextView pilula;
+    private int totalDia = -1, metaDia = 0;
+    private long ultLeituraMs = 0;
+    private boolean lendo = false;
+
     private final BroadcastReceiver tela = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
             String a = i.getAction();
@@ -65,6 +70,7 @@ public class Porta extends AccessibilityService {
                 if (emAlvo) saiu();
                 emAlvo = false;
                 removerOverlay();
+                removerPilula();
             } else if (Intent.ACTION_USER_PRESENT.equals(a)) {
                 try {
                     AccessibilityNodeInfo r = getRootInActiveWindow();
@@ -94,6 +100,7 @@ public class Porta extends AccessibilityService {
         try { unregisterReceiver(tela); } catch (Throwable e) { }
         h.removeCallbacksAndMessages(null);
         removerOverlay();
+        removerPilula();
         return super.onUnbind(i);
     }
 
@@ -142,6 +149,7 @@ public class Porta extends AccessibilityService {
 
     private void saiu() {
         h.removeCallbacks(tick);
+        removerPilula();
         saiuTs = SystemClock.elapsedRealtime();
     }
 
@@ -153,10 +161,7 @@ public class Porta extends AccessibilityService {
             restanteMs -= (agora - ultTick);
             ultTick = agora;
             if (restanteMs <= 0) { expulsar(); return; }
-            if (restanteMs <= 60000 && !avisou1min) {
-                avisou1min = true;
-                try { Toast.makeText(Porta.this, "Falta 1 min", Toast.LENGTH_SHORT).show(); } catch (Throwable e) { }
-            }
+            if (restanteMs <= 120000) atualizarPilula();
             h.postDelayed(this, 1000);
         }
     };
@@ -169,6 +174,7 @@ public class Porta extends AccessibilityService {
 
     private void expulsar() {
         restanteMs = 0;
+        removerPilula();
         expulsoTs = SystemClock.elapsedRealtime();
         emAlvo = false;
         try {
@@ -178,6 +184,78 @@ public class Porta extends AccessibilityService {
             p.edit().putString("expDia", dia).putInt("expN", n + 1).apply();
         } catch (Throwable e) { }
         performGlobalAction(GLOBAL_ACTION_HOME);
+    }
+
+    // ---- pílula do topo ----
+    private void atualizarPilula() {
+        try {
+            long agora = SystemClock.elapsedRealtime();
+            if (!lendo && (totalDia < 0 || agora - ultLeituraMs > 20000)) lerTotalDia();
+            int seg = (int) Math.max(0, (restanteMs + 999) / 1000);
+            String t = (seg / 60) + ":" + String.format(Locale.US, "%02d", seg % 60);
+            if (totalDia >= 0) t += "  ·  hoje " + Avisos.hm(totalDia) + (metaDia > 0 ? " / " + Avisos.hm(metaDia) : "");
+            boolean vermelho = restanteMs <= 60000;
+            if (pilula == null) {
+                TextView v = new TextView(this);
+                v.setTextSize(15);
+                v.setTypeface(Typeface.DEFAULT_BOLD);
+                v.setTextColor(0xFFFBF6EA);
+                v.setGravity(Gravity.CENTER);
+                v.setPadding(dp(16), dp(8), dp(16), dp(8));
+                WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                        WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                        PixelFormat.TRANSLUCENT);
+                lp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+                lp.y = alturaBarra() + dp(6);
+                wm.addView(v, lp);
+                pilula = v;
+            }
+            pilula.setBackground(forma(vermelho ? VERM : 0xEB2E1A0E, 20));
+            pilula.setText(t);
+        } catch (Throwable e) { }
+    }
+
+    private int alturaBarra() {
+        try {
+            int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
+            if (id > 0) return getResources().getDimensionPixelSize(id);
+        } catch (Throwable e) { }
+        return dp(24);
+    }
+
+    private void lerTotalDia() {
+        lendo = true;
+        new Thread(new Runnable() {
+            @Override public void run() {
+                int total = -1, meta = 0;
+                try {
+                    org.json.JSONArray a = new Coletor(Porta.this).coletar(1);
+                    if (a.length() > 0) total = a.getJSONObject(a.length() - 1).optInt("total", -1);
+                    String pl = Sync.prefs(Porta.this).getString("plano", "");
+                    if (pl.length() > 0) meta = Avisos.metaDoDia(new JSONObject(pl));
+                } catch (Throwable e) { }
+                final int t = total, m = meta;
+                h.post(new Runnable() {
+                    @Override public void run() {
+                        if (t >= 0) totalDia = t;
+                        metaDia = m;
+                        ultLeituraMs = SystemClock.elapsedRealtime();
+                        lendo = false;
+                    }
+                });
+            }
+        }).start();
+    }
+
+    private void removerPilula() {
+        if (pilula != null) {
+            try { wm.removeView(pilula); } catch (Throwable e) { }
+            pilula = null;
+        }
+        totalDia = -1;
     }
 
     // ---- tela de escolha ----
@@ -213,6 +291,7 @@ public class Porta extends AccessibilityService {
 
     private void mostrarEscolha(final boolean espera) {
         removerOverlay();
+        removerPilula();
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER);
