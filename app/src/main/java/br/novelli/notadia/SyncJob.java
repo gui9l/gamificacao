@@ -7,7 +7,7 @@ import android.app.job.JobService;
 import android.content.ComponentName;
 import android.content.Context;
 
-/** Tarefa periódica (a cada ~15 min) que envia o uso para a planilha. */
+/** Tarefa periódica (a cada ~30 min) que envia o uso para a planilha. */
 public class SyncJob extends JobService {
 
     private static final int ID = 4271;
@@ -15,7 +15,7 @@ public class SyncJob extends JobService {
     public static void agendar(Context c) {
         JobScheduler js = (JobScheduler) c.getSystemService(Context.JOB_SCHEDULER_SERVICE);
         JobInfo info = new JobInfo.Builder(ID, new ComponentName(c, SyncJob.class))
-                .setPeriodic(15 * 60 * 1000L)
+                .setPeriodic(30 * 60 * 1000L)
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
                 .setPersisted(true)
                 .build();
