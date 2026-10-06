@@ -61,6 +61,10 @@ public class Sync {
                 }
                 JSONObject r = new JSONObject(resp);
                 if (r.optBoolean("ok")) {
+                    try {
+                        JSONObject plano = r.optJSONObject("plano");
+                        if (dias.length() > 0) Avisos.checar(c, dias.getJSONObject(dias.length() - 1).optInt("total", 0), plano);
+                    } catch (Exception ignorada) { }
                     msg = "Enviado às " + new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date())
                             + " (" + dias.length() + " dias).";
                 } else {

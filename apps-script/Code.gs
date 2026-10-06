@@ -53,6 +53,8 @@ function doPost(e) {
     var corpo = JSON.parse(e.postData.contents);
     if (!tokenOk_(corpo.token)) return resposta_({ ok: false, erro: 'código secreto não confere' });
     lock.waitLock(20000);
+    // A Nota do computador manda o plano de meta; o celular recebe de volta na resposta.
+    if (corpo.plano) PropertiesService.getScriptProperties().setProperty('PLANO', JSON.stringify(corpo.plano));
     var s = aba_();
     var ultima = s.getLastRow();
     var datas = ultima > 1 ? s.getRange(2, 1, ultima - 1, 1).getValues() : [];
@@ -79,7 +81,8 @@ function doPost(e) {
         s.getRange(s.getLastRow(), 1).setNumberFormat('@').setValue(String(d.date));
       }
     });
-    return resposta_({ ok: true });
+    var pl = PropertiesService.getScriptProperties().getProperty('PLANO');
+    return resposta_({ ok: true, plano: pl ? JSON.parse(pl) : null });
   } catch (err) {
     return resposta_({ ok: false, erro: String(err) });
   } finally {
