@@ -31,7 +31,7 @@ public class Tela {
 
     private EditText url, token;
     private Anel anel;
-    private TextView lInsta, lTik, lEnvio, lErro, lPasso1, lPasso2, lMeta;
+    private TextView lInsta, lTik, lEnvio, lErro, lPasso1, lPasso2, lPasso3, lMeta;
     private Button bEnviar;
 
     private int dp(int v) {
@@ -178,6 +178,15 @@ public class Tela {
             }
         });
 
+        lPasso3 = new TextView(act);
+        linhaPasso(cfg, lPasso3, "abrir", new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                act.startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            }
+        });
+        TextView dica3 = texto("Porta: ative \"Nota do dia · Porta\" em Acessibilidade. Se o Android bloquear, abra Informações do app → ⋮ → Permitir configurações restritas.", 11, false, SUAVE);
+        cfg.addView(dica3, topo(6));
+
         // cartão: conexão
         LinearLayout con = cartao(col);
         con.addView(texto("Conexão com a planilha", 16, true, TXT));
@@ -228,6 +237,9 @@ public class Tela {
         boolean bat = semRestricaoDeBateria();
         lPasso2.setText((bat ? "✓  " : "○  ") + "Bateria sem restrições");
         lPasso2.setTextColor(bat ? VERDE : TXT);
+        boolean porta = Porta.ativa(act);
+        lPasso3.setText((porta ? "✓  " : "○  ") + "Porta (Instagram/TikTok)");
+        lPasso3.setTextColor(porta ? VERDE : TXT);
 
         long ts = p.getLong("resumoTs", 0);
         int total = p.getInt("totalHoje", 0);

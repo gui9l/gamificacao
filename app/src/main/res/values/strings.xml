@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="porta_nome">Nota do dia · Porta</string>
+    <string name="porta_desc">Detecta quando o Instagram ou o TikTok abrem para pedir quanto tempo você vai ficar e mandar você para a tela inicial quando acabar. Não lê o conteúdo das telas.</string>
+</resources>
