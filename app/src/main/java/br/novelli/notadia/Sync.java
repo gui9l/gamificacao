@@ -63,7 +63,13 @@ public class Sync {
                 if (r.optBoolean("ok")) {
                     try {
                         JSONObject plano = r.optJSONObject("plano");
-                        if (dias.length() > 0) Avisos.checar(c, dias.getJSONObject(dias.length() - 1).optInt("total", 0), plano);
+                        if (plano != null) p.edit().putString("plano", plano.toString()).apply();
+                        if (dias.length() > 0) {
+                            JSONObject hoje = dias.getJSONObject(dias.length() - 1);
+                            int total = hoje.optInt("total", 0);
+                            guardarHoje(p, hoje);
+                            Avisos.checar(c, total, plano);
+                        }
                     } catch (Exception ignorada) { }
                     msg = "Enviado às " + new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date())
                             + " (" + dias.length() + " dias).";
@@ -76,6 +82,27 @@ public class Sync {
         }
         p.edit().putString("ultimo", msg).putLong("ultimoTs", System.currentTimeMillis()).apply();
         return msg;
+    }
+
+    private static int[] somar(JSONArray apps, String[] pacotes) {
+        int min = 0, ab = 0;
+        if (apps != null) for (int i = 0; i < apps.length(); i++) {
+            JSONObject a = apps.optJSONObject(i);
+            if (a == null) continue;
+            for (String pk : pacotes) if (pk.equals(a.optString("pkg"))) { min += a.optInt("min"); ab += a.optInt("opens"); }
+        }
+        return new int[]{min, ab};
+    }
+
+    /** Guarda o resumo de hoje para a tela do app mostrar. */
+    private static void guardarHoje(SharedPreferences p, JSONObject hoje) {
+        JSONArray apps = hoje.optJSONArray("apps");
+        int[] ins = somar(apps, new String[]{"com.instagram.android", "com.instagram.lite"});
+        int[] tik = somar(apps, new String[]{"com.zhiliaoapp.musically", "com.ss.android.ugc.trill"});
+        p.edit().putInt("totalHoje", hoje.optInt("total", 0))
+                .putInt("insMin", ins[0]).putInt("insAb", ins[1])
+                .putInt("tikMin", tik[0]).putInt("tikAb", tik[1])
+                .putLong("resumoTs", System.currentTimeMillis()).apply();
     }
 
     private static String ler(HttpURLConnection c) throws Exception {
