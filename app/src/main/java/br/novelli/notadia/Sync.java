@@ -68,7 +68,7 @@ public class Sync {
                             JSONObject hoje = dias.getJSONObject(dias.length() - 1);
                             int total = hoje.optInt("total", 0);
                             guardarHoje(p, hoje);
-                            Avisos.checar(c, total, plano);
+                            Avisos.checar(c, p.getInt("insMin", 0) + p.getInt("tikMin", 0), plano);
                         }
                     } catch (Exception ignorada) { }
                     msg = "Enviado às " + new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date())
@@ -84,7 +84,7 @@ public class Sync {
         return msg;
     }
 
-    private static int[] somar(JSONArray apps, String[] pacotes) {
+    static int[] somar(JSONArray apps, String[] pacotes) {
         int min = 0, ab = 0;
         if (apps != null) for (int i = 0; i < apps.length(); i++) {
             JSONObject a = apps.optJSONObject(i);

@@ -242,7 +242,7 @@ public class Tela {
         lPasso3.setTextColor(porta ? VERDE : TXT);
 
         long ts = p.getLong("resumoTs", 0);
-        int total = p.getInt("totalHoje", 0);
+        int total = p.getInt("insMin", 0) + p.getInt("tikMin", 0);  // tempo "inútil": Instagram + TikTok
         int meta = 0;
         try { String pl = p.getString("plano", ""); if (pl.length() > 0) meta = Avisos.metaDoDia(new JSONObject(pl)); } catch (Throwable e) { }
 
@@ -258,11 +258,11 @@ public class Tela {
                 anel.progresso = f;
                 anel.corAnel = f >= 1f ? VERM : (f >= 0.8f ? OURO : VERDE);
                 anel.pequeno = "de " + Avisos.hm(meta);
-                lMeta.setText(f >= 1f ? "Meta de hoje ultrapassada" : (f >= 0.8f ? "Perto da meta de hoje" : "Dentro da meta de hoje"));
+                lMeta.setText(f >= 1f ? "Meta de Insta + TikTok ultrapassada" : (f >= 0.8f ? "Perto da meta de Insta + TikTok" : "Dentro da meta de Insta + TikTok"));
                 lMeta.setTextColor(f >= 1f ? VERM : (f >= 0.8f ? BRILHO : VERDE));
             } else {
                 anel.progresso = 0f; anel.corAnel = OURO;
-                anel.pequeno = "tempo de tela hoje";
+                anel.pequeno = "Insta + TikTok hoje";
                 lMeta.setText("Abra a Nota no computador para enviar a meta do dia.");
                 lMeta.setTextColor(SUAVE);
             }

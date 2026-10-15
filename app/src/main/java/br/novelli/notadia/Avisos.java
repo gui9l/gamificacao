@@ -21,6 +21,7 @@ public class Avisos {
     /** Meta do dia em minutos, a partir do plano que a Nota do computador mandou; 0 se não houver. */
     static int metaDoDia(JSONObject plano) {
         if (plano == null) return 0;
+        if (plano.has("util")) return Math.max(0, plano.optInt("util", 0));  // meta de Insta + TikTok do dia (a Nota do PC calcula)
         int fin = plano.optInt("final", 0);
         int base = plano.optInt("base", 0);
         int passo = plano.optInt("passo", 0);
@@ -56,12 +57,12 @@ public class Avisos {
                 p.edit().putString("avisoDia", hoje).putBoolean("aviso80", false).putBoolean("aviso100", false).apply();
             }
             if (totalHoje >= meta && !p.getBoolean("aviso100", false)) {
-                mostrar(c, 2, "Meta de tela de hoje atingida",
-                        "Você chegou a " + hm(totalHoje) + " (meta " + hm(meta) + "). Ligue o filtro e deixe o celular de lado.");
+                mostrar(c, 2, "Meta de Insta + TikTok de hoje atingida",
+                        "Você chegou a " + hm(totalHoje) + " (meta " + hm(meta) + "). Hora de sair do feed.");
                 p.edit().putBoolean("aviso100", true).putBoolean("aviso80", true).apply();
             } else if (totalHoje >= meta * 0.8 && !p.getBoolean("aviso80", false)) {
-                mostrar(c, 1, "Você chegou a 80% da meta de tela",
-                        hm(totalHoje) + " de " + hm(meta) + " hoje. Ligue o filtro de escala de cinza.");
+                mostrar(c, 1, "Você chegou a 80% da meta de Insta + TikTok",
+                        hm(totalHoje) + " de " + hm(meta) + " hoje.");
                 p.edit().putBoolean("aviso80", true).apply();
             }
         } catch (Throwable e) { }

@@ -193,7 +193,7 @@ public class Porta extends AccessibilityService {
             if (!lendo && (totalDia < 0 || agora - ultLeituraMs > 20000)) lerTotalDia();
             int seg = (int) Math.max(0, (restanteMs + 999) / 1000);
             String t = (seg / 60) + ":" + String.format(Locale.US, "%02d", seg % 60);
-            if (totalDia >= 0) t += "  ·  hoje " + Avisos.hm(totalDia) + (metaDia > 0 ? " / " + Avisos.hm(metaDia) : "");
+            if (totalDia >= 0) t += "  ·  Insta+TikTok " + Avisos.hm(totalDia) + (metaDia > 0 ? " / " + Avisos.hm(metaDia) : "");
             boolean vermelho = restanteMs <= 60000;
             if (pilula == null) {
                 TextView v = new TextView(this);
@@ -233,7 +233,12 @@ public class Porta extends AccessibilityService {
                 int total = -1, meta = 0;
                 try {
                     org.json.JSONArray a = new Coletor(Porta.this).coletar(1);
-                    if (a.length() > 0) total = a.getJSONObject(a.length() - 1).optInt("total", -1);
+                    if (a.length() > 0) {
+                        org.json.JSONArray apps = a.getJSONObject(a.length() - 1).optJSONArray("apps");
+                        int[] ins = Sync.somar(apps, new String[]{"com.instagram.android", "com.instagram.lite"});
+                        int[] tik = Sync.somar(apps, new String[]{"com.zhiliaoapp.musically", "com.ss.android.ugc.trill"});
+                        total = ins[0] + tik[0];
+                    }
                     String pl = Sync.prefs(Porta.this).getString("plano", "");
                     if (pl.length() > 0) meta = Avisos.metaDoDia(new JSONObject(pl));
                 } catch (Throwable e) { }
