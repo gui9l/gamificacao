@@ -6,7 +6,7 @@ import android.content.SharedPreferences;
 /** Configurações editáveis da Porta (guardadas no próprio app). */
 final class Cfg {
     static final String OPCOES = "cfgOpcoes", GRACA = "cfgGraca", ESPERA = "cfgEspera",
-            PILULA = "cfgPilula", BONUS = "cfgBonus", PORTA = "porta";
+            PILULA = "cfgPilula", BANCO = "cfgBanco", PORTA = "porta";
 
     private Cfg() { }
 
@@ -48,10 +48,22 @@ final class Cfg {
     static int graca(Context c) { return p(c).getInt(GRACA, 3); }          // minutos
     static int espera(Context c) { return p(c).getInt(ESPERA, 5); }        // segundos
     static int pilula(Context c) { return p(c).getInt(PILULA, 60); }       // segundos finais com a faixa
-    static int bonus(Context c) { return p(c).getInt(BONUS, 1); }          // minutos (0 = sem bônus)
+    static int bancoMax(Context c) { return p(c).getInt(BANCO, 10); }     // minutos guardáveis (0 = não guarda)
     static boolean portaLigada(Context c) { return p(c).getBoolean(PORTA, true); }
 
     static long gracaMs(Context c) { return graca(c) * 60000L; }
     static long pilulaMs(Context c) { return pilula(c) * 1000L; }
-    static long bonusMs(Context c) { return bonus(c) * 60000L; }
+    static long bancoMaxMs(Context c) { return bancoMax(c) * 60000L; }
+
+    private static String hoje() { return new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date()); }
+
+    /** Tempo guardado por sair antes do fim (zera na virada do dia). */
+    static long bancoMs(Context c) {
+        SharedPreferences sp = p(c);
+        return sp.getString("bancoDia", "").equals(hoje()) ? sp.getLong("bancoMs", 0) : 0;
+    }
+
+    static void setBancoMs(Context c, long ms) {
+        p(c).edit().putString("bancoDia", hoje()).putLong("bancoMs", Math.max(0, ms)).apply();
+    }
 }

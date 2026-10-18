@@ -237,7 +237,7 @@ public class Tela {
     }
 
     // ---- tela de ajustes ----
-    private EditText eOpc, eGraca, eEspera, ePilula, eBonus;
+    private EditText eOpc, eGraca, eEspera, ePilula, eBanco;
     private android.widget.CheckBox cPorta;
     private TextView lCfgErro;
 
@@ -279,8 +279,8 @@ public class Tela {
         linhaCfg(c, "Espera após expulsão (s)", "Segundos até liberar a escolha se reabrir logo depois de ser expulso. 0 = sem espera.", eEspera);
         ePilula = campoNum("" + Cfg.pilula(act));
         linhaCfg(c, "Faixa no topo (s finais)", "Quantos segundos antes do fim aparece o tempo restante e o total do dia. Padrão: 60.", ePilula);
-        eBonus = campoNum("" + Cfg.bonus(act));
-        linhaCfg(c, "Bônus por sair sozinho (min)", "Saiu do app por conta própria depois de usar pelo menos 1 min, e voltou dentro da janela: ganha esse tempo extra, uma vez por sessão. 0 = sem bônus.", eBonus);
+        eBanco = campoNum("" + Cfg.bancoMax(act));
+        linhaCfg(c, "Tempo guardado, máximo (min)", "Sair do app por conta própria antes do tempo acabar (depois de usar pelo menos 1 min) guarda o que sobrou. Se voltar depois da janela, o guardado soma ao tempo escolhido. Acumula até esse teto e zera na virada do dia. 0 = não guarda.", eBanco);
 
         lCfgErro = texto("", 12, false, VERM);
         col.addView(lCfgErro, topo(10));
@@ -312,13 +312,13 @@ public class Tela {
             int graca = num(eGraca, 1, 30, "Janela de volta");
             int espera = num(eEspera, 0, 60, "Espera");
             int pilula = num(ePilula, 10, 300, "Faixa no topo");
-            int bonus = num(eBonus, 0, 10, "Bônus");
+            int banco = num(eBanco, 0, 60, "Tempo guardado");
             StringBuilder s = new StringBuilder();
             for (int i = 0; i < op.length; i++) { if (i > 0) s.append(","); s.append(op[i]); }
             Sync.prefs(act).edit()
                     .putString(Cfg.OPCOES, s.toString())
                     .putInt(Cfg.GRACA, graca).putInt(Cfg.ESPERA, espera)
-                    .putInt(Cfg.PILULA, pilula).putInt(Cfg.BONUS, bonus)
+                    .putInt(Cfg.PILULA, pilula).putInt(Cfg.BANCO, banco)
                     .putBoolean(Cfg.PORTA, cPorta.isChecked())
                     .apply();
             principal();
@@ -387,7 +387,8 @@ public class Tela {
             String dia = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
             int sai = p.getString("saiDia", "").equals(dia) ? p.getInt("saiN", 0) : 0;
             int exp = p.getString("expDia", "").equals(dia) ? p.getInt("expN", 0) : 0;
-            lSai.setText("Saiu sozinho " + sai + "x  ·  Expulso " + exp + "x");
+            long bk = Cfg.bancoMs(act) / 60000L;
+            lSai.setText("Saiu sozinho " + sai + "x  ·  Expulso " + exp + "x" + (bk > 0 ? "  ·  Guardado " + bk + " min" : ""));
         } catch (Throwable e) { lSai.setText(""); }
 
         String ult = p.getString("ultimo", "Ainda não enviou.");

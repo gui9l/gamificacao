@@ -53,7 +53,7 @@ public class Porta extends AccessibilityService {
     private long saiuTs = 0;       // quando saiu por conta própria
     private long expulsoTs = 0;    // quando foi expulso pelo tempo (0 = não)
     private boolean saiuConsciente = false;  // saiu do app por conta própria antes do tempo acabar
-    private boolean bonusDado = false;        // bônus por saída consciente já concedido nesta sessão
+    private long guardadoNaSaida = 0;         // quanto desta saída foi para o banco de tempo
     private long totalSessaoMs = 0;           // tempo total escolhido (mais bônus) nesta sessão
 
     // pílula no topo (últimos 2 min)
@@ -139,17 +139,17 @@ public class Porta extends AccessibilityService {
         long agora = SystemClock.elapsedRealtime();
         long graca = Cfg.gracaMs(this);
         if (restanteMs > 0 && agora - saiuTs <= graca) {
-            // volta rápida: continua a sessão; quem saiu por conta própria ganha o bônus
-            long bonus = Cfg.bonusMs(this);
-            if (saiuConsciente && !bonusDado && bonus > 0) {
-                restanteMs += bonus; totalSessaoMs += bonus; bonusDado = true;
-                avisar("Você saiu por conta própria: +" + Cfg.bonus(this) + " min de bônus");
+            // volta rápida: continua a sessão; o que tinha sido guardado volta para ela
+            if (guardadoNaSaida > 0) {
+                Cfg.setBancoMs(this, Cfg.bancoMs(this) - guardadoNaSaida);
+                guardadoNaSaida = 0;
             }
             saiuConsciente = false;
             iniciarTick();
         } else {
             restanteMs = 0;
             saiuConsciente = false;
+            guardadoNaSaida = 0;
             boolean espera = expulsoTs > 0 && agora - expulsoTs <= graca;
             mostrarEscolha(espera);
         }
@@ -160,9 +160,14 @@ public class Porta extends AccessibilityService {
         removerPilula();
         saiuTs = SystemClock.elapsedRealtime();
         saiuConsciente = false;
+        guardadoNaSaida = 0;
         // saída consciente: trocou de app com tempo sobrando, depois de usar pelo menos 1 min
         if (porConta && restanteMs > 0 && totalSessaoMs - restanteMs >= 60000L) {
             saiuConsciente = true;
+            // o que sobrou vai para o banco de tempo (soma com o que já tinha, até o teto)
+            long teto = Cfg.bancoMaxMs(this), atual = Cfg.bancoMs(this);
+            long guarda = Math.min(restanteMs, Math.max(0, teto - atual));
+            if (guarda > 0) { Cfg.setBancoMs(this, atual + guarda); guardadoNaSaida = guarda; }
             try {
                 SharedPreferences p = Sync.prefs(this);
                 String dia = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
@@ -174,6 +179,11 @@ public class Porta extends AccessibilityService {
 
     private void avisar(String msg) {
         try { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show(); } catch (Throwable e) { }
+    }
+
+    private String minTxt(long ms) {
+        long s = ms / 1000, m = s / 60;
+        return s % 60 == 0 || m >= 10 ? m + " min" : m + ":" + String.format(Locale.US, "%02d", s % 60) + " min";
     }
 
     // ---- relógio da sessão ----
@@ -333,9 +343,16 @@ public class Porta extends AccessibilityService {
             lp.topMargin = dp(14);
             col.addView(tv(r, 14, false, SUAVE), lp);
         }
+        final long banco = Cfg.bancoMs(this);
+        if (banco >= 1000) {
+            LinearLayout.LayoutParams lg = new LinearLayout.LayoutParams(-1, -2);
+            lg.topMargin = dp(18);
+            TextView g = tv("Você guardou " + minTxt(banco) + " por sair antes do tempo", 15, true, 0xFF4E7D4A);
+            col.addView(g, lg);
+        }
         LinearLayout.LayoutParams lq = new LinearLayout.LayoutParams(-1, -2);
-        lq.topMargin = dp(28);
-        col.addView(tv("Quanto tempo você vai ficar?", 16, true, TXT), lq);
+        lq.topMargin = dp(banco >= 1000 ? 14 : 28);
+        col.addView(tv(banco >= 1000 ? "Quanto tempo você vai ficar? (soma o guardado)" : "Quanto tempo você vai ficar?", 16, true, TXT), lq);
 
         final TextView aviso = tv(espera ? "Aguarde " + Cfg.espera(this) + "s…" : "", 14, false, SUAVE);
         LinearLayout.LayoutParams la = new LinearLayout.LayoutParams(-1, -2);
@@ -350,7 +367,7 @@ public class Porta extends AccessibilityService {
         for (int i = 0; i < opcoes.length; i++) {
             final int min = opcoes[i];
             Button b = new Button(this);
-            b.setText(min + " min");
+            b.setText(min + " min" + (banco >= 1000 ? "\n+ " + minTxt(banco) : ""));
             b.setAllCaps(false); b.setTextSize(16); b.setTypeface(Typeface.DEFAULT_BOLD);
             b.setTextColor(Color.WHITE);
             b.setBackground(forma(VINHO, 12));
@@ -360,7 +377,7 @@ public class Porta extends AccessibilityService {
             b.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) { escolher(min); }
             });
-            LinearLayout.LayoutParams lb = new LinearLayout.LayoutParams(0, dp(52), 1f);
+            LinearLayout.LayoutParams lb = new LinearLayout.LayoutParams(0, dp(banco >= 1000 ? 66 : 52), 1f);
             lb.leftMargin = dp(5); lb.rightMargin = dp(5);
             linha.addView(b, lb);
             bs[i] = b;
@@ -429,9 +446,10 @@ public class Porta extends AccessibilityService {
 
     private void escolher(int min) {
         removerOverlay();
-        restanteMs = min * 60000L;
+        restanteMs = min * 60000L + Cfg.bancoMs(this);   // soma o tempo guardado
+        Cfg.setBancoMs(this, 0);
+        guardadoNaSaida = 0;
         totalSessaoMs = restanteMs;
-        bonusDado = false;
         saiuConsciente = false;
         expulsoTs = 0;
         if (emAlvo) iniciarTick();
