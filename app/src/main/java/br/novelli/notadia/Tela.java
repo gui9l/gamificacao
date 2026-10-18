@@ -31,7 +31,8 @@ public class Tela {
 
     private EditText url, token;
     private Anel anel;
-    private TextView lInsta, lTik, lEnvio, lErro, lPasso1, lPasso2, lPasso3, lMeta;
+    private TextView lInsta, lTik, lEnvio, lErro, lPasso1, lPasso2, lPasso3, lMeta, lSai;
+    private boolean emConfig = false;
     private Button bEnviar;
 
     private int dp(int v) {
@@ -127,6 +128,13 @@ public class Tela {
             }
         });
 
+        try { if (android.os.Build.VERSION.SDK_INT >= 33) act.requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 7); } catch (Throwable e) { }
+        try { SyncJob.agendar(act); Sync.prefs(act).edit().remove("erro").apply(); } catch (Throwable e) { Sync.prefs(act).edit().putString("erro", "agendar: " + e).apply(); }
+        principal();
+    }
+
+    private void principal() {
+        emConfig = false;
         ScrollView sv = new ScrollView(act);
         sv.setBackgroundColor(BG);
         LinearLayout col = new LinearLayout(act);
@@ -145,6 +153,14 @@ public class Tela {
         LinearLayout.LayoutParams lpp = new LinearLayout.LayoutParams(-2, -2);
         lpp.leftMargin = dp(10);
         cab.addView(pill, lpp);
+        View mola = new View(act);
+        cab.addView(mola, new LinearLayout.LayoutParams(0, 1, 1f));
+        Button bCfg = botao("⚙ Ajustes", false, new View.OnClickListener() {
+            @Override public void onClick(View v) { config(); }
+        });
+        bCfg.setMinHeight(0); bCfg.setMinimumHeight(0);
+        bCfg.setPadding(dp(14), dp(6), dp(14), dp(6));
+        cab.addView(bCfg, new LinearLayout.LayoutParams(-2, dp(38)));
         col.addView(cab);
 
         // cartão: hoje
@@ -159,6 +175,8 @@ public class Tela {
         hoje.addView(lInsta, topo(14));
         lTik = texto("", 14, false, TXT);
         hoje.addView(lTik, topo(4));
+        lSai = texto("", 13, false, TXT);
+        hoje.addView(lSai, topo(10));
         lEnvio = texto("", 12, false, SUAVE);
         hoje.addView(lEnvio, topo(12));
 
@@ -215,9 +233,104 @@ public class Tela {
         SharedPreferences p = Sync.prefs(act);
         url.setText(p.getString("url", ""));
         token.setText(p.getString("token", ""));
-        try { if (android.os.Build.VERSION.SDK_INT >= 33) act.requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 7); } catch (Throwable e) { }
-        try { SyncJob.agendar(act); Sync.prefs(act).edit().remove("erro").apply(); } catch (Throwable e) { Sync.prefs(act).edit().putString("erro", "agendar: " + e).apply(); }
         atualizarStatus();
+    }
+
+    // ---- tela de ajustes ----
+    private EditText eOpc, eGraca, eEspera, ePilula, eBonus;
+    private android.widget.CheckBox cPorta;
+    private TextView lCfgErro;
+
+    private EditText campoNum(String valor) {
+        EditText e = campo("");
+        e.setInputType(InputType.TYPE_CLASS_NUMBER);
+        e.setText(valor);
+        return e;
+    }
+
+    private void linhaCfg(LinearLayout pai, String titulo, String ajuda, EditText e) {
+        pai.addView(texto(titulo, 14, true, TXT), topo(14));
+        pai.addView(texto(ajuda, 12, false, SUAVE), topo(2));
+        pai.addView(e, topo(6));
+    }
+
+    private void config() {
+        emConfig = true;
+        ScrollView sv = new ScrollView(act);
+        sv.setBackgroundColor(BG);
+        LinearLayout col = new LinearLayout(act);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(16), dp(24), dp(16), dp(28));
+        sv.addView(col);
+        col.addView(texto("Ajustes da Porta", 24, true, TXT));
+
+        LinearLayout c = cartao(col);
+        cPorta = new android.widget.CheckBox(act);
+        cPorta.setText("Porta ligada (perguntar o tempo ao abrir Instagram/TikTok)");
+        cPorta.setTextSize(14); cPorta.setTextColor(TXT);
+        cPorta.setChecked(Cfg.portaLigada(act));
+        c.addView(cPorta);
+        eOpc = campo("4, 6, 8");
+        eOpc.setText(Cfg.opcoesTexto(act));
+        linhaCfg(c, "Tempos oferecidos (min)", "De 1 a 4 valores separados por vírgula. Ex.: 3, 5, 8", eOpc);
+        eGraca = campoNum("" + Cfg.graca(act));
+        linhaCfg(c, "Janela de volta (min)", "Sair e voltar dentro desse prazo continua a sessão sem perguntar. Depois de ser expulso, é o prazo em que vale a espera.", eGraca);
+        eEspera = campoNum("" + Cfg.espera(act));
+        linhaCfg(c, "Espera após expulsão (s)", "Segundos até liberar a escolha se reabrir logo depois de ser expulso. 0 = sem espera.", eEspera);
+        ePilula = campoNum("" + Cfg.pilula(act));
+        linhaCfg(c, "Faixa no topo (s finais)", "Quantos segundos antes do fim aparece o tempo restante e o total do dia. Padrão: 60.", ePilula);
+        eBonus = campoNum("" + Cfg.bonus(act));
+        linhaCfg(c, "Bônus por sair sozinho (min)", "Saiu do app por conta própria depois de usar pelo menos 1 min, e voltou dentro da janela: ganha esse tempo extra, uma vez por sessão. 0 = sem bônus.", eBonus);
+
+        lCfgErro = texto("", 12, false, VERM);
+        col.addView(lCfgErro, topo(10));
+        Button salvar = botao("Salvar", true, new View.OnClickListener() {
+            @Override public void onClick(View v) { salvarConfig(); }
+        });
+        col.addView(salvar, topo(12));
+        salvar.getLayoutParams().height = dp(48);
+        Button cancelar = botao("Voltar sem salvar", false, new View.OnClickListener() {
+            @Override public void onClick(View v) { principal(); }
+        });
+        col.addView(cancelar, topo(10));
+        cancelar.getLayoutParams().height = dp(46);
+        act.setContentView(sv);
+    }
+
+    private int num(EditText e, int min, int max, String nome) throws Exception {
+        int v;
+        try { v = Integer.parseInt(e.getText().toString().trim()); }
+        catch (Throwable x) { throw new Exception(nome + ": digite um número."); }
+        if (v < min || v > max) throw new Exception(nome + ": use um valor entre " + min + " e " + max + ".");
+        return v;
+    }
+
+    private void salvarConfig() {
+        try {
+            int[] op = Cfg.parseOpcoes(eOpc.getText().toString());
+            if (op == null) throw new Exception("Tempos: use de 1 a 4 números entre 1 e 120, separados por vírgula.");
+            int graca = num(eGraca, 1, 30, "Janela de volta");
+            int espera = num(eEspera, 0, 60, "Espera");
+            int pilula = num(ePilula, 10, 300, "Faixa no topo");
+            int bonus = num(eBonus, 0, 10, "Bônus");
+            StringBuilder s = new StringBuilder();
+            for (int i = 0; i < op.length; i++) { if (i > 0) s.append(","); s.append(op[i]); }
+            Sync.prefs(act).edit()
+                    .putString(Cfg.OPCOES, s.toString())
+                    .putInt(Cfg.GRACA, graca).putInt(Cfg.ESPERA, espera)
+                    .putInt(Cfg.PILULA, pilula).putInt(Cfg.BONUS, bonus)
+                    .putBoolean(Cfg.PORTA, cPorta.isChecked())
+                    .apply();
+            principal();
+        } catch (Exception e) {
+            lCfgErro.setText(e.getMessage());
+        }
+    }
+
+    /** Botão voltar do Android: fecha os ajustes em vez de sair do app. */
+    public boolean voltar() {
+        if (emConfig) { principal(); return true; }
+        return false;
     }
 
     private boolean semRestricaoDeBateria() {
@@ -270,6 +383,12 @@ public class Tela {
             lTik.setText("TikTok         " + Avisos.hm(p.getInt("tikMin", 0)) + "  ·  " + p.getInt("tikAb", 0) + " aberturas");
         }
         anel.invalidate();
+        try {
+            String dia = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
+            int sai = p.getString("saiDia", "").equals(dia) ? p.getInt("saiN", 0) : 0;
+            int exp = p.getString("expDia", "").equals(dia) ? p.getInt("expN", 0) : 0;
+            lSai.setText("Saiu sozinho " + sai + "x  ·  Expulso " + exp + "x");
+        } catch (Throwable e) { lSai.setText(""); }
 
         String ult = p.getString("ultimo", "Ainda não enviou.");
         lEnvio.setText(ult);

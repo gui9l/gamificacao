@@ -39,9 +39,6 @@ import java.util.Locale;
 public class Porta extends AccessibilityService {
 
     static final String[] ALVOS = {"com.instagram.android", "com.zhiliaoapp.musically", "com.ss.android.ugc.trill"};
-    static final long GRACA_MS = 3 * 60 * 1000L;
-    static final int ESPERA_S = 5;
-    static final int[] OPCOES_MIN = {4, 6, 8};
 
     private static final int BG = 0xFFFBF6EA, BTNB = 0xFFD9C8A3, TXT = 0xFF2E1A0E, SUAVE = 0xFF8B6F55,
             VINHO = 0xFF8B1A4A, VERM = 0xFFB4423A, BORDA = 0xFFE3D6B8;
@@ -55,7 +52,9 @@ public class Porta extends AccessibilityService {
     private long ultTick = 0;
     private long saiuTs = 0;       // quando saiu por conta própria
     private long expulsoTs = 0;    // quando foi expulso pelo tempo (0 = não)
-    private boolean avisou1min = false;
+    private boolean saiuConsciente = false;  // saiu do app por conta própria antes do tempo acabar
+    private boolean bonusDado = false;        // bônus por saída consciente já concedido nesta sessão
+    private long totalSessaoMs = 0;           // tempo total escolhido (mais bônus) nesta sessão
 
     // pílula no topo (últimos 2 min)
     private TextView pilula;
@@ -67,7 +66,7 @@ public class Porta extends AccessibilityService {
         @Override public void onReceive(Context c, Intent i) {
             String a = i.getAction();
             if (Intent.ACTION_SCREEN_OFF.equals(a)) {
-                if (emAlvo) saiu();
+                if (emAlvo) saiu(false);
                 emAlvo = false;
                 removerOverlay();
                 removerPilula();
@@ -127,30 +126,54 @@ public class Porta extends AccessibilityService {
 
     private void primeiroPlano(String pkg) {
         if (ignorar(pkg)) return;
-        if (!Sync.prefs(this).getBoolean("porta", true)) return;
+        if (!Cfg.portaLigada(this)) return;
         if (alvo(pkg)) {
             if (!emAlvo) { emAlvo = true; entrou(); }
         } else {
-            if (emAlvo) { saiu(); emAlvo = false; }
+            if (emAlvo) { saiu(true); emAlvo = false; }
             removerOverlay();
         }
     }
 
     private void entrou() {
         long agora = SystemClock.elapsedRealtime();
-        if (restanteMs > 0 && agora - saiuTs <= GRACA_MS) {
-            iniciarTick();              // volta rápida: continua a sessão
+        long graca = Cfg.gracaMs(this);
+        if (restanteMs > 0 && agora - saiuTs <= graca) {
+            // volta rápida: continua a sessão; quem saiu por conta própria ganha o bônus
+            long bonus = Cfg.bonusMs(this);
+            if (saiuConsciente && !bonusDado && bonus > 0) {
+                restanteMs += bonus; totalSessaoMs += bonus; bonusDado = true;
+                avisar("Você saiu por conta própria: +" + Cfg.bonus(this) + " min de bônus");
+            }
+            saiuConsciente = false;
+            iniciarTick();
         } else {
             restanteMs = 0;
-            boolean espera = expulsoTs > 0 && agora - expulsoTs <= GRACA_MS;
+            saiuConsciente = false;
+            boolean espera = expulsoTs > 0 && agora - expulsoTs <= graca;
             mostrarEscolha(espera);
         }
     }
 
-    private void saiu() {
+    private void saiu(boolean porConta) {
         h.removeCallbacks(tick);
         removerPilula();
         saiuTs = SystemClock.elapsedRealtime();
+        saiuConsciente = false;
+        // saída consciente: trocou de app com tempo sobrando, depois de usar pelo menos 1 min
+        if (porConta && restanteMs > 0 && totalSessaoMs - restanteMs >= 60000L) {
+            saiuConsciente = true;
+            try {
+                SharedPreferences p = Sync.prefs(this);
+                String dia = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+                int n = p.getString("saiDia", "").equals(dia) ? p.getInt("saiN", 0) : 0;
+                p.edit().putString("saiDia", dia).putInt("saiN", n + 1).apply();
+            } catch (Throwable e) { }
+        }
+    }
+
+    private void avisar(String msg) {
+        try { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show(); } catch (Throwable e) { }
     }
 
     // ---- relógio da sessão ----
@@ -161,7 +184,7 @@ public class Porta extends AccessibilityService {
             restanteMs -= (agora - ultTick);
             ultTick = agora;
             if (restanteMs <= 0) { expulsar(); return; }
-            if (restanteMs <= 120000) atualizarPilula();
+            if (restanteMs <= Cfg.pilulaMs(Porta.this)) atualizarPilula();
             h.postDelayed(this, 1000);
         }
     };
@@ -193,7 +216,7 @@ public class Porta extends AccessibilityService {
             if (!lendo && (totalDia < 0 || agora - ultLeituraMs > 20000)) lerTotalDia();
             int seg = (int) Math.max(0, (restanteMs + 999) / 1000);
             String t = (seg / 60) + ":" + String.format(Locale.US, "%02d", seg % 60);
-            if (totalDia >= 0) t += "  ·  Insta+TikTok " + Avisos.hm(totalDia) + (metaDia > 0 ? " / " + Avisos.hm(metaDia) : "");
+            if (totalDia >= 0) t += "  ·  " + Avisos.hm(totalDia) + (metaDia > 0 ? " / " + Avisos.hm(metaDia) : "");
             boolean vermelho = restanteMs <= 60000;
             if (pilula == null) {
                 TextView v = new TextView(this);
@@ -314,7 +337,7 @@ public class Porta extends AccessibilityService {
         lq.topMargin = dp(28);
         col.addView(tv("Quanto tempo você vai ficar?", 16, true, TXT), lq);
 
-        final TextView aviso = tv(espera ? "Aguarde " + ESPERA_S + "s…" : "", 14, false, SUAVE);
+        final TextView aviso = tv(espera ? "Aguarde " + Cfg.espera(this) + "s…" : "", 14, false, SUAVE);
         LinearLayout.LayoutParams la = new LinearLayout.LayoutParams(-1, -2);
         la.topMargin = dp(6);
         col.addView(aviso, la);
@@ -322,9 +345,10 @@ public class Porta extends AccessibilityService {
         LinearLayout linha = new LinearLayout(this);
         linha.setOrientation(LinearLayout.HORIZONTAL);
         linha.setGravity(Gravity.CENTER);
-        final Button[] bs = new Button[OPCOES_MIN.length];
-        for (int i = 0; i < OPCOES_MIN.length; i++) {
-            final int min = OPCOES_MIN[i];
+        final int[] opcoes = Cfg.opcoes(this);
+        final Button[] bs = new Button[opcoes.length];
+        for (int i = 0; i < opcoes.length; i++) {
+            final int min = opcoes[i];
             Button b = new Button(this);
             b.setText(min + " min");
             b.setAllCaps(false); b.setTextSize(16); b.setTypeface(Typeface.DEFAULT_BOLD);
@@ -378,12 +402,15 @@ public class Porta extends AccessibilityService {
         } catch (Throwable e) {
             overlay = null;
             // sem sobreposição possível: ao menos começa a contar com 6 min
-            restanteMs = 6 * 60000L; avisou1min = false; iniciarTick();
+            restanteMs = opcoes[Math.min(1, opcoes.length - 1)] * 60000L; totalSessaoMs = restanteMs; iniciarTick();
             return;
         }
 
-        if (espera) {
-            final int[] resta = {ESPERA_S};
+        if (espera && Cfg.espera(this) <= 0) {
+            for (Button b : bs) { b.setEnabled(true); b.setAlpha(1f); }
+            aviso.setText("");
+        } else if (espera) {
+            final int[] resta = {Cfg.espera(this)};
             h.postDelayed(new Runnable() {
                 @Override public void run() {
                     if (overlay != col) return;
@@ -403,8 +430,10 @@ public class Porta extends AccessibilityService {
     private void escolher(int min) {
         removerOverlay();
         restanteMs = min * 60000L;
+        totalSessaoMs = restanteMs;
+        bonusDado = false;
+        saiuConsciente = false;
         expulsoTs = 0;
-        avisou1min = false;
         if (emAlvo) iniciarTick();
     }
 

@@ -33,6 +33,12 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    public void onBackPressed() {
+        try { if (tela != null && tela.voltar()) return; } catch (Throwable e) { }
+        super.onBackPressed();
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         try { if (tela != null) tela.atualizarStatus(); } catch (Throwable e) { }
