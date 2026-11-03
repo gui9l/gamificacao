@@ -9,5 +9,6 @@ public class BootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         SyncJob.agendar(context);
+        Porta.iniciar(context);
     }
 }

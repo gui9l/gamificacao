@@ -1,6 +1,16 @@
 package br.novelli.notadia;
 
-import android.accessibilityservice.AccessibilityService;
+import android.app.KeyguardManager;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.Service;
+import android.app.usage.UsageEvents;
+import android.app.usage.UsageStatsManager;
+import android.content.pm.ServiceInfo;
+import android.os.Build;
+import android.os.IBinder;
+import android.os.PowerManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -18,8 +28,6 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.view.accessibility.AccessibilityEvent;
-import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -32,16 +40,20 @@ import java.util.Locale;
 
 /**
  * "Porta" do Instagram/TikTok: ao entrar, você escolhe 4, 6 ou 8 min; ao acabar o tempo o app
- * te manda para a tela inicial. Só reage quando um app abre (sem serviço fixo, sem notificação).
+ * te manda para a tela inicial. Não usa Acessibilidade (os apps de banco recusam abrir com ela ligada):
+ * vê o app da frente pelo acesso ao uso e desenha por cima com a permissão "sobrepor a outros apps".
  * Volta em até 3 min depois de sair por conta própria continua a sessão de onde parou.
  * Reabrir em até 3 min depois de ser expulso exige 5 s de espera antes de escolher outro tempo.
  */
-public class Porta extends AccessibilityService {
+public class Porta extends Service {
 
     static final String[] ALVOS = {"com.instagram.android", "com.zhiliaoapp.musically", "com.ss.android.ugc.trill"};
 
     private static final int BG = 0xFFFBF6EA, BTNB = 0xFFD9C8A3, TXT = 0xFF2E1A0E, SUAVE = 0xFF8B6F55,
             VINHO = 0xFF8B1A4A, VERM = 0xFFB4423A, BORDA = 0xFFE3D6B8;
+
+    private static final String CANAL = "porta";
+    private static final int NOTIF_ID = 7;
 
     private final Handler h = new Handler(Looper.getMainLooper());
     private WindowManager wm;
@@ -62,56 +74,122 @@ public class Porta extends AccessibilityService {
     private long ultLeituraMs = 0;
     private boolean lendo = false;
 
+    private UsageStatsManager usm;
+    private String fgAtual = "";       // app da frente (último ACTIVITY_RESUMED)
+    private long ultConsulta = 0;
+    private long ignorarAte = 0;        // logo depois de mandar para a tela inicial
+    private boolean telaLigada = true;
+
     private final BroadcastReceiver tela = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
             String a = i.getAction();
             if (Intent.ACTION_SCREEN_OFF.equals(a)) {
+                telaLigada = false;
+                h.removeCallbacks(sonda);
                 if (emAlvo) saiu(false);
                 emAlvo = false;
                 removerOverlay();
                 removerPilula();
-            } else if (Intent.ACTION_USER_PRESENT.equals(a)) {
-                try {
-                    AccessibilityNodeInfo r = getRootInActiveWindow();
-                    if (r != null && r.getPackageName() != null) primeiroPlano(r.getPackageName().toString());
-                } catch (Throwable e) { }
+            } else if (Intent.ACTION_SCREEN_ON.equals(a) || Intent.ACTION_USER_PRESENT.equals(a)) {
+                telaLigada = true;
+                h.removeCallbacks(sonda);
+                h.post(sonda);
             }
         }
     };
 
-    public static boolean ativa(Context c) {
+    /** Liga a Porta se estiver ligada nos ajustes e com as duas permissões; desliga se não. */
+    public static void aplicarConfig(Context c) {
         try {
-            String s = Settings.Secure.getString(c.getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
-            return s != null && s.contains(c.getPackageName() + "/" + Porta.class.getName());
-        } catch (Throwable e) { return false; }
+            if (Cfg.portaLigada(c)) { if (pronta(c)) c.startForegroundService(new Intent(c, Porta.class)); }
+            else c.stopService(new Intent(c, Porta.class));
+        } catch (Throwable e) { }
     }
 
-    @Override protected void onServiceConnected() {
-        super.onServiceConnected();
+    public static void iniciar(Context c) { aplicarConfig(c); }
+
+    /** Permissões: sobrepor a outros apps + acesso ao uso. */
+    public static boolean ativa(Context c) { return pronta(c); }
+
+    private static boolean pronta(Context c) {
+        try { return Settings.canDrawOverlays(c) && Sync.temAcessoAoUso(c); } catch (Throwable e) { return false; }
+    }
+
+    @Override public IBinder onBind(Intent i) { return null; }
+
+    @Override public void onCreate() {
+        super.onCreate();
         wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+        usm = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
+        try { telaLigada = ((PowerManager) getSystemService(Context.POWER_SERVICE)).isInteractive(); } catch (Throwable e) { }
         IntentFilter f = new IntentFilter();
         f.addAction(Intent.ACTION_SCREEN_OFF);
+        f.addAction(Intent.ACTION_SCREEN_ON);
         f.addAction(Intent.ACTION_USER_PRESENT);
         try { registerReceiver(tela, f); } catch (Throwable e) { }
     }
 
-    @Override public boolean onUnbind(Intent i) {
+    @Override public int onStartCommand(Intent i, int flags, int id) {
+        emPrimeiroPlano();
+        if (!Cfg.portaLigada(this)) { stopSelf(); return START_NOT_STICKY; }
+        h.removeCallbacks(sonda);
+        h.post(sonda);
+        return START_STICKY;
+    }
+
+    @Override public void onDestroy() {
         try { unregisterReceiver(tela); } catch (Throwable e) { }
         h.removeCallbacksAndMessages(null);
         removerOverlay();
         removerPilula();
-        return super.onUnbind(i);
+        super.onDestroy();
     }
 
-    @Override public void onInterrupt() { }
-
-    @Override public void onAccessibilityEvent(AccessibilityEvent ev) {
+    /** Notificação mínima (sem som nem ícone na barra) que mantém o serviço vivo. */
+    private void emPrimeiroPlano() {
         try {
-            if (ev.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
-            CharSequence p = ev.getPackageName();
-            if (p == null) return;
-            primeiroPlano(p.toString());
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            NotificationChannel ch = new NotificationChannel(CANAL, "Porta", NotificationManager.IMPORTANCE_MIN);
+            ch.setShowBadge(false);
+            nm.createNotificationChannel(ch);
+            Notification n = new Notification.Builder(this, CANAL)
+                    .setSmallIcon(android.R.drawable.ic_menu_view)
+                    .setContentTitle("Nota do dia · Porta")
+                    .setContentText("Vigiando Instagram e TikTok")
+                    .setOngoing(true)
+                    .build();
+            if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            else startForeground(NOTIF_ID, n);
         } catch (Throwable e) { }
+    }
+
+    // ---- quem está na frente (acesso ao uso, sem Acessibilidade) ----
+    private final Runnable sonda = new Runnable() {
+        @Override public void run() {
+            if (!telaLigada) return;
+            try { lerPrimeiroPlano(); } catch (Throwable e) { }
+            h.postDelayed(this, 700);
+        }
+    };
+
+    private void lerPrimeiroPlano() {
+        long agora = System.currentTimeMillis();
+        long ini = ultConsulta == 0 ? agora - 30 * 60000L : ultConsulta - 1000;
+        UsageEvents ev = usm.queryEvents(ini, agora);
+        UsageEvents.Event e = new UsageEvents.Event();
+        String novo = null;
+        while (ev.hasNextEvent()) {
+            ev.getNextEvent(e);
+            if (e.getEventType() == UsageEvents.Event.ACTIVITY_RESUMED && e.getPackageName() != null) novo = e.getPackageName();
+        }
+        ultConsulta = agora;
+        if (novo != null) fgAtual = novo;
+        if (fgAtual.length() == 0 || SystemClock.elapsedRealtime() < ignorarAte) return;
+        try {
+            KeyguardManager km = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+            if (km != null && km.isKeyguardLocked()) return;   // tela bloqueada: espera destravar
+        } catch (Throwable x) { }
+        primeiroPlano(fgAtual);
     }
 
     private boolean ignorar(String pkg) {
@@ -126,7 +204,7 @@ public class Porta extends AccessibilityService {
 
     private void primeiroPlano(String pkg) {
         if (ignorar(pkg)) return;
-        if (!Cfg.portaLigada(this)) return;
+        if (!Cfg.portaLigada(this) || !Settings.canDrawOverlays(this)) return;
         if (alvo(pkg)) {
             if (!emAlvo) { emAlvo = true; entrou(); }
         } else {
@@ -177,10 +255,6 @@ public class Porta extends AccessibilityService {
         }
     }
 
-    private void avisar(String msg) {
-        try { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show(); } catch (Throwable e) { }
-    }
-
     private String minTxt(long ms) {
         long s = ms / 1000, m = s / 60;
         return s % 60 == 0 || m >= 10 ? m + " min" : m + ":" + String.format(Locale.US, "%02d", s % 60) + " min";
@@ -207,8 +281,8 @@ public class Porta extends AccessibilityService {
 
     private void expulsar() {
         restanteMs = 0;
-        removerPilula();
         expulsoTs = SystemClock.elapsedRealtime();
+        ignorarAte = expulsoTs + 1500;
         emAlvo = false;
         try {
             SharedPreferences p = Sync.prefs(this);
@@ -216,7 +290,31 @@ public class Porta extends AccessibilityService {
             int n = p.getString("expDia", "").equals(dia) ? p.getInt("expN", 0) : 0;
             p.edit().putString("expDia", dia).putInt("expN", n + 1).apply();
         } catch (Throwable e) { }
-        performGlobalAction(GLOBAL_ACTION_HOME);
+        irParaInicio(true);
+        removerPilula();
+    }
+
+    /** Manda para a tela inicial. Abrir tela em segundo plano só é permitido com uma janela nossa visível. */
+    private void irParaInicio(boolean ancora) {
+        View a = null;
+        if (ancora && pilula == null && overlay == null) {
+            try {
+                a = new View(this);
+                wm.addView(a, new WindowManager.LayoutParams(1, 1, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                        PixelFormat.TRANSLUCENT));
+            } catch (Throwable e) { a = null; }
+        }
+        try {
+            Intent i = new Intent(Intent.ACTION_MAIN);
+            i.addCategory(Intent.CATEGORY_HOME);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
+        } catch (Throwable e) { }
+        final View f = a;
+        if (f != null) h.postDelayed(new Runnable() {
+            @Override public void run() { try { wm.removeView(f); } catch (Throwable e) { } }
+        }, 1500);
     }
 
     // ---- pílula do topo ----
@@ -237,7 +335,7 @@ public class Porta extends AccessibilityService {
                 v.setPadding(dp(16), dp(8), dp(16), dp(8));
                 WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                         WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
-                        WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                                 | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                         PixelFormat.TRANSLUCENT);
@@ -409,7 +507,7 @@ public class Porta extends AccessibilityService {
 
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.OPAQUE);
         try {
@@ -456,9 +554,10 @@ public class Porta extends AccessibilityService {
     }
 
     private void voltar() {
-        removerOverlay();
+        ignorarAte = SystemClock.elapsedRealtime() + 1500;
         emAlvo = false;
-        performGlobalAction(GLOBAL_ACTION_HOME);
+        irParaInicio(false);
+        removerOverlay();
     }
 
     private void removerOverlay() {

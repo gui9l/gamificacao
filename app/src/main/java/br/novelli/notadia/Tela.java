@@ -199,10 +199,10 @@ public class Tela {
         lPasso3 = new TextView(act);
         linhaPasso(cfg, lPasso3, "abrir", new View.OnClickListener() {
             @Override public void onClick(View v) {
-                act.startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                act.startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + act.getPackageName())));
             }
         });
-        TextView dica3 = texto("Porta: ative \"Nota do dia · Porta\" em Acessibilidade. Se o Android bloquear, abra Informações do app → ⋮ → Permitir configurações restritas.", 11, false, SUAVE);
+        TextView dica3 = texto("Porta: permita \"Sobrepor a outros apps\" para o Nota do dia. Não usa Acessibilidade, então o app do banco abre normalmente.", 11, false, SUAVE);
         cfg.addView(dica3, topo(6));
 
         // cartão: conexão
@@ -225,7 +225,7 @@ public class Tela {
 
         lErro = texto("", 11, false, VERM);
         col.addView(lErro, topo(12));
-        TextView rodape = texto("Envia o uso a cada ~30 min, sem notificação fixa. A Nota do computador lê da planilha.", 12, false, SUAVE);
+        TextView rodape = texto("Envia o uso a cada ~30 min. A Porta mantém uma notificação mínima, sem som, para continuar ativa. A Nota do computador lê da planilha.", 12, false, SUAVE);
         col.addView(rodape, topo(12));
 
         act.setContentView(sv);
@@ -321,6 +321,7 @@ public class Tela {
                     .putInt(Cfg.PILULA, pilula).putInt(Cfg.BANCO, banco)
                     .putBoolean(Cfg.PORTA, cPorta.isChecked())
                     .apply();
+            Porta.aplicarConfig(act);
             principal();
         } catch (Exception e) {
             lCfgErro.setText(e.getMessage());
@@ -351,7 +352,7 @@ public class Tela {
         lPasso2.setText((bat ? "✓  " : "○  ") + "Bateria sem restrições");
         lPasso2.setTextColor(bat ? VERDE : TXT);
         boolean porta = Porta.ativa(act);
-        lPasso3.setText((porta ? "✓  " : "○  ") + "Porta (Instagram/TikTok)");
+        lPasso3.setText((porta ? "✓  " : "○  ") + "Porta (sobrepor a outros apps)");
         lPasso3.setTextColor(porta ? VERDE : TXT);
 
         long ts = p.getLong("resumoTs", 0);

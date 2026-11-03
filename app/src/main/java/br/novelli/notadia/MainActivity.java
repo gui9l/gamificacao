@@ -42,5 +42,6 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         try { if (tela != null) tela.atualizarStatus(); } catch (Throwable e) { }
+        Porta.iniciar(this);
     }
 }
