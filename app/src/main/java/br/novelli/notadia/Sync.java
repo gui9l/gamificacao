@@ -53,6 +53,14 @@ public class Sync {
                 JSONObject corpo = new JSONObject();
                 corpo.put("token", token);
                 corpo.put("days", dias);
+                JSONObject porta = new JSONObject();   // contadores de hoje da Porta (o PC mostra)
+                porta.put("date", new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date()));
+                porta.put("exp", Cfg.contDia(c, "exp"));
+                porta.put("sai", Cfg.contDia(c, "sai"));
+                porta.put("ree", Cfg.contDia(c, "ree"));
+                porta.put("espMax", Cfg.contDia(c, "espMax"));
+                porta.put("ligada", Cfg.portaLigada(c));
+                corpo.put("porta", porta);
                 String resp = postar(url, corpo.toString());
                 if (resp.trim().startsWith("<")) {
                     msg = "A planilha devolveu uma página da web, não a resposta. Confira se a implantação está como \"Qualquer pessoa\" e se o link termina em /exec.";
@@ -63,7 +71,10 @@ public class Sync {
                 if (r.optBoolean("ok")) {
                     try {
                         JSONObject plano = r.optJSONObject("plano");
-                        if (plano != null) p.edit().putString("plano", plano.toString()).apply();
+                        if (plano != null) {
+                            p.edit().putString("plano", plano.toString()).apply();
+                            Porta.aplicarConfig(c);   // o PC pode ter ligado/desligado a Porta
+                        }
                         if (dias.length() > 0) {
                             JSONObject hoje = dias.getJSONObject(dias.length() - 1);
                             int total = hoje.optInt("total", 0);

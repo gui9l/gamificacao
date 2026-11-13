@@ -43,7 +43,9 @@ import java.util.Locale;
  * te manda para a tela inicial. Não usa Acessibilidade (os apps de banco recusam abrir com ela ligada):
  * vê o app da frente pelo acesso ao uso e desenha por cima com a permissão "sobrepor a outros apps".
  * Volta em até 3 min depois de sair por conta própria continua a sessão de onde parou.
- * Reabrir em até 3 min depois de ser expulso exige 5 s de espera antes de escolher outro tempo.
+ * Depois de ser expulso, reabrir exige uma espera CRESCENTE (4 s, 5 s, 6 s… a cada reentrada seguida). Ficar fora
+ * do app mais que a janela de volta ao começo (5 min, vem do PC) zera a escada. Ligar/desligar a Porta e os valores
+ * da espera só pelo computador (Jarvis), pelo "plano" da planilha.
  */
 public class Porta extends Service {
 
@@ -67,6 +69,10 @@ public class Porta extends Service {
     private boolean saiuConsciente = false;  // saiu do app por conta própria antes do tempo acabar
     private long guardadoNaSaida = 0;         // quanto desta saída foi para o banco de tempo
     private long totalSessaoMs = 0;           // tempo total escolhido (mais bônus) nesta sessão
+    private long ultSaidaTs = 0;              // última vez que saiu do app (por conta, expulso ou tela apagada)
+    private int degraus = 0;                  // reentradas seguidas depois de expulso (sobe a espera)
+    private boolean escada = false;           // já foi expulso nesta sequência
+    private int esperaAtual = 0;              // segundos que esta tela de escolha está exigindo
 
     // pílula no topo (últimos 2 min)
     private TextView pilula;
@@ -101,8 +107,9 @@ public class Porta extends Service {
     /** Liga a Porta se estiver ligada nos ajustes e com as duas permissões; desliga se não. */
     public static void aplicarConfig(Context c) {
         try {
-            if (Cfg.portaLigada(c)) { if (pronta(c)) c.startForegroundService(new Intent(c, Porta.class)); }
-            else c.stopService(new Intent(c, Porta.class));
+            // O serviço fica sempre de pé; com a Porta desligada (pelo PC) ele só não faz nada. Assim, quando o PC religa,
+            // não é preciso iniciar serviço em segundo plano (o Android 12+ bloqueia).
+            if (pronta(c)) c.startForegroundService(new Intent(c, Porta.class));
         } catch (Throwable e) { }
     }
 
@@ -131,7 +138,6 @@ public class Porta extends Service {
 
     @Override public int onStartCommand(Intent i, int flags, int id) {
         emPrimeiroPlano();
-        if (!Cfg.portaLigada(this)) { stopSelf(); return START_NOT_STICKY; }
         h.removeCallbacks(sonda);
         h.post(sonda);
         return START_STICKY;
@@ -228,15 +234,25 @@ public class Porta extends Service {
             restanteMs = 0;
             saiuConsciente = false;
             guardadoNaSaida = 0;
-            boolean espera = expulsoTs > 0 && agora - expulsoTs <= graca;
-            mostrarEscolha(espera);
+            if (ultSaidaTs > 0 && agora - ultSaidaTs > Cfg.esperaResetMs(this)) { escada = false; degraus = 0; }  // ficou fora: volta ao começo
+            esperaAtual = escada ? Cfg.esperaDa(this, degraus) : 0;
+            mostrarEscolha(escada && esperaAtual > 0);
         }
+        sincronizarSePreciso();
+    }
+
+    /** Ao abrir Instagram/TikTok, traz a ordem mais nova do PC (liga/desliga e espera), se faz mais de 5 min. */
+    private void sincronizarSePreciso() {
+        final Context c = getApplicationContext();
+        if (System.currentTimeMillis() - Sync.prefs(c).getLong("ultimoTs", 0) < 5 * 60000L) return;
+        new Thread(new Runnable() { @Override public void run() { try { Sync.enviar(c); } catch (Throwable e) { } } }).start();
     }
 
     private void saiu(boolean porConta) {
         h.removeCallbacks(tick);
         removerPilula();
         saiuTs = SystemClock.elapsedRealtime();
+        ultSaidaTs = saiuTs;
         saiuConsciente = false;
         guardadoNaSaida = 0;
         // saída consciente: trocou de app com tempo sobrando, depois de usar pelo menos 1 min
@@ -246,12 +262,7 @@ public class Porta extends Service {
             long teto = Cfg.bancoMaxMs(this), atual = Cfg.bancoMs(this);
             long guarda = Math.min(restanteMs, Math.max(0, teto - atual));
             if (guarda > 0) { Cfg.setBancoMs(this, atual + guarda); guardadoNaSaida = guarda; }
-            try {
-                SharedPreferences p = Sync.prefs(this);
-                String dia = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
-                int n = p.getString("saiDia", "").equals(dia) ? p.getInt("saiN", 0) : 0;
-                p.edit().putString("saiDia", dia).putInt("saiN", n + 1).apply();
-            } catch (Throwable e) { }
+            try { Cfg.somarDia(this, "sai"); } catch (Throwable e) { }
         }
     }
 
@@ -282,14 +293,11 @@ public class Porta extends Service {
     private void expulsar() {
         restanteMs = 0;
         expulsoTs = SystemClock.elapsedRealtime();
+        ultSaidaTs = expulsoTs;
+        escada = true;   // a partir daqui, cada reentrada logo em seguida pede uma espera maior
         ignorarAte = expulsoTs + 1500;
         emAlvo = false;
-        try {
-            SharedPreferences p = Sync.prefs(this);
-            String dia = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
-            int n = p.getString("expDia", "").equals(dia) ? p.getInt("expN", 0) : 0;
-            p.edit().putString("expDia", dia).putInt("expN", n + 1).apply();
-        } catch (Throwable e) { }
+        try { Cfg.somarDia(this, "exp"); } catch (Throwable e) { }
         irParaInicio(true);
         removerPilula();
     }
@@ -452,7 +460,7 @@ public class Porta extends Service {
         lq.topMargin = dp(banco >= 1000 ? 14 : 28);
         col.addView(tv(banco >= 1000 ? "Quanto tempo você vai ficar? (soma o guardado)" : "Quanto tempo você vai ficar?", 16, true, TXT), lq);
 
-        final TextView aviso = tv(espera ? "Aguarde " + Cfg.espera(this) + "s…" : "", 14, false, SUAVE);
+        final TextView aviso = tv(espera ? "Aguarde " + esperaAtual + "s…" + (degraus > 0 ? "  (" + (degraus + 1) + "ª vez seguida)" : "") : "", 14, false, SUAVE);
         LinearLayout.LayoutParams la = new LinearLayout.LayoutParams(-1, -2);
         la.topMargin = dp(6);
         col.addView(aviso, la);
@@ -521,17 +529,17 @@ public class Porta extends Service {
             return;
         }
 
-        if (espera && Cfg.espera(this) <= 0) {
+        if (espera && esperaAtual <= 0) {
             for (Button b : bs) { b.setEnabled(true); b.setAlpha(1f); }
             aviso.setText("");
         } else if (espera) {
-            final int[] resta = {Cfg.espera(this)};
+            final int[] resta = {esperaAtual};
             h.postDelayed(new Runnable() {
                 @Override public void run() {
                     if (overlay != col) return;
                     resta[0]--;
                     if (resta[0] > 0) {
-                        aviso.setText("Aguarde " + resta[0] + "s…");
+                        aviso.setText("Aguarde " + resta[0] + "s…" + (degraus > 0 ? "  (" + (degraus + 1) + "ª vez seguida)" : ""));
                         h.postDelayed(this, 1000);
                     } else {
                         aviso.setText("");
@@ -543,6 +551,11 @@ public class Porta extends Service {
     }
 
     private void escolher(int min) {
+        if (escada && esperaAtual > 0) {   // esperou a trava e entrou mesmo assim
+            try { Cfg.somarDia(this, "ree"); Cfg.maxDia(this, "espMax", esperaAtual); } catch (Throwable e) { }
+            degraus++;
+        }
+        esperaAtual = 0;
         removerOverlay();
         restanteMs = min * 60000L + Cfg.bancoMs(this);   // soma o tempo guardado
         Cfg.setBancoMs(this, 0);
@@ -554,6 +567,7 @@ public class Porta extends Service {
     }
 
     private void voltar() {
+        ultSaidaTs = SystemClock.elapsedRealtime();
         ignorarAte = SystemClock.elapsedRealtime() + 1500;
         emAlvo = false;
         irParaInicio(false);

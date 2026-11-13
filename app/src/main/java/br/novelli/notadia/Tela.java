@@ -265,18 +265,17 @@ public class Tela {
         col.addView(texto("Ajustes da Porta", 24, true, TXT));
 
         LinearLayout c = cartao(col);
-        cPorta = new android.widget.CheckBox(act);
-        cPorta.setText("Porta ligada (perguntar o tempo ao abrir Instagram/TikTok)");
-        cPorta.setTextSize(14); cPorta.setTextColor(TXT);
-        cPorta.setChecked(Cfg.portaLigada(act));
-        c.addView(cPorta);
+        cPorta = new android.widget.CheckBox(act);   // (não aparece: ligar/desligar agora é só pelo computador)
+        c.addView(texto((Cfg.portaLigada(act) ? "Porta LIGADA" : "Porta DESLIGADA")
+                + ". Ligar e desligar só pelo computador (Jarvis). Espera após expulsão: "
+                + Cfg.esperaBase(act) + " s, +" + Cfg.esperaPasso(act) + " s a cada vez seguida; volta ao começo depois de "
+                + (Cfg.esperaResetMs(act) / 60000L) + " min fora.", 13, false, TXT));
         eOpc = campo("4, 6, 8");
         eOpc.setText(Cfg.opcoesTexto(act));
         linhaCfg(c, "Tempos oferecidos (min)", "De 1 a 4 valores separados por vírgula. Ex.: 3, 5, 8", eOpc);
         eGraca = campoNum("" + Cfg.graca(act));
         linhaCfg(c, "Janela de volta (min)", "Sair e voltar dentro desse prazo continua a sessão sem perguntar. Depois de ser expulso, é o prazo em que vale a espera.", eGraca);
-        eEspera = campoNum("" + Cfg.espera(act));
-        linhaCfg(c, "Espera após expulsão (s)", "Segundos até liberar a escolha se reabrir logo depois de ser expulso. 0 = sem espera.", eEspera);
+        eEspera = campoNum("" + Cfg.espera(act));   // (não aparece: a espera agora é crescente e vem do computador)
         ePilula = campoNum("" + Cfg.pilula(act));
         linhaCfg(c, "Faixa no topo (s finais)", "Quantos segundos antes do fim aparece o tempo restante e o total do dia. Padrão: 60.", ePilula);
         eBanco = campoNum("" + Cfg.bancoMax(act));
@@ -310,7 +309,7 @@ public class Tela {
             int[] op = Cfg.parseOpcoes(eOpc.getText().toString());
             if (op == null) throw new Exception("Tempos: use de 1 a 4 números entre 1 e 120, separados por vírgula.");
             int graca = num(eGraca, 1, 30, "Janela de volta");
-            int espera = num(eEspera, 0, 60, "Espera");
+            int espera = Cfg.espera(act);
             int pilula = num(ePilula, 10, 300, "Faixa no topo");
             int banco = num(eBanco, 0, 60, "Tempo guardado");
             StringBuilder s = new StringBuilder();
@@ -319,7 +318,6 @@ public class Tela {
                     .putString(Cfg.OPCOES, s.toString())
                     .putInt(Cfg.GRACA, graca).putInt(Cfg.ESPERA, espera)
                     .putInt(Cfg.PILULA, pilula).putInt(Cfg.BANCO, banco)
-                    .putBoolean(Cfg.PORTA, cPorta.isChecked())
                     .apply();
             Porta.aplicarConfig(act);
             principal();

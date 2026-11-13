@@ -13,7 +13,8 @@
  */
 
 var ABA = 'uso';
-var CABECALHO = ['data', 'total_min', 'insta_min', 'tiktok_min', 'insta_aberturas', 'tiktok_aberturas', 'apps_json', 'atualizado_em'];
+var CABECALHO = ['data', 'total_min', 'insta_min', 'tiktok_min', 'insta_aberturas', 'tiktok_aberturas', 'apps_json', 'atualizado_em',
+                 'porta_expulsoes', 'porta_saidas', 'porta_reentradas', 'porta_espera_max'];
 var INSTA = ['com.instagram.android', 'com.instagram.lite'];
 var TIKTOK = ['com.zhiliaoapp.musically', 'com.ss.android.ugc.trill'];
 
@@ -26,6 +27,7 @@ function aba_() {
     s.getRange('A:A').setNumberFormat('@');
     s.setFrozenRows(1);
   }
+  if (s.getRange(1, 9).getValue() === '') s.getRange(1, 9, 1, 4).setValues([CABECALHO.slice(8, 12)]);  // planilha antiga: títulos das colunas novas
   return s;
 }
 
@@ -81,6 +83,13 @@ function doPost(e) {
         s.getRange(s.getLastRow(), 1).setNumberFormat('@').setValue(String(d.date));
       }
     });
+    // Contadores de hoje da Porta (expulsões, saídas por conta, reentradas que esperaram a trava, maior espera)
+    if (corpo.porta && corpo.porta.date) {
+      var ondeP = linhaDe[String(corpo.porta.date)];
+      if (ondeP) s.getRange(ondeP, 9, 1, 4).setValues([[Number(corpo.porta.exp) || 0, Number(corpo.porta.sai) || 0,
+                                                        Number(corpo.porta.ree) || 0, Number(corpo.porta.espMax) || 0]]);
+      PropertiesService.getScriptProperties().setProperty('PORTA_LIGADA', String(!!corpo.porta.ligada));
+    }
     var pl = PropertiesService.getScriptProperties().getProperty('PLANO');
     return resposta_({ ok: true, plano: pl ? JSON.parse(pl) : null });
   } catch (err) {
@@ -91,7 +100,7 @@ function doPost(e) {
 }
 
 // Entrega para a Nota do computador: ?token=...&dias=14
-// Uma linha por dia:  data;total;insta_min;tiktok_min;insta_aberturas;tiktok_aberturas;enviado_em
+// Uma linha por dia:  data;total;insta_min;tiktok_min;insta_aberturas;tiktok_aberturas;enviado_em;expulsoes;saidas;reentradas;espera_max
 function doGet(e) {
   var p = (e && e.parameter) || {};
   if (!tokenOk_(p.token)) {
@@ -102,14 +111,15 @@ function doGet(e) {
   var ultima = s.getLastRow();
   var linhas = [];
   if (ultima > 1) {
-    var v = s.getRange(2, 1, ultima - 1, 8).getValues();
+    var v = s.getRange(2, 1, ultima - 1, 12).getValues();
     var tz = Session.getScriptTimeZone();
     v.sort(function (a, b) { return String(a[0]) < String(b[0]) ? -1 : 1; });
     v = v.slice(Math.max(0, v.length - dias));
     v.forEach(function (r) {
       var quando = r[7] ? Utilities.formatDate(new Date(r[7]), tz, "yyyy-MM-dd'T'HH:mm") : '';
-      linhas.push(r.slice(0, 6).concat([quando]).join(';'));
+      linhas.push(r.slice(0, 6).concat([quando], r.slice(8, 12).map(function (x) { return x === '' ? '' : Number(x) || 0; })).join(';'));
     });
   }
-  return ContentService.createTextOutput('OK\n' + linhas.join('\n')).setMimeType(ContentService.MimeType.TEXT);
+  var lig = PropertiesService.getScriptProperties().getProperty('PORTA_LIGADA');
+  return ContentService.createTextOutput('OK\n' + linhas.join('\n') + (lig !== null ? '\nPORTA;' + lig : '')).setMimeType(ContentService.MimeType.TEXT);
 }
