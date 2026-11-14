@@ -31,6 +31,60 @@ function aba_() {
   return s;
 }
 
+// ---- Caixa do Jarvis: o celular escreve na notificação da Porta, o PC lê, responde, e o celular mostra a resposta ----
+var CAIXA = 'jarvis';
+
+function caixaAba_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var s = ss.getSheetByName(CAIXA);
+  if (!s) {
+    s = ss.insertSheet(CAIXA);
+    s.appendRow(['id', 'enviado_em', 'texto', 'resposta', 'pergunta', 'respondido_em']);
+    s.setFrozenRows(1);
+  }
+  return s;
+}
+
+function caixaLinhas_(s) {
+  var n = s.getLastRow();
+  return n > 1 ? s.getRange(2, 1, n - 1, 6).getValues() : [];
+}
+
+// { token, msg: {id, texto} }  — celular manda uma mensagem
+// { token, ver: [ids] }        — celular pergunta se já tem resposta
+// { token, resp: [{id, r, p}] } — PC devolve as respostas (p = está esperando um "sim")
+function caixa_(corpo) {
+  var s = caixaAba_();
+  var v = caixaLinhas_(s);
+  var onde = {};
+  v.forEach(function (r, i) { onde[String(r[0])] = i + 2; });
+  if (corpo.msg && corpo.msg.id && !onde[String(corpo.msg.id)]) {
+    s.appendRow([String(corpo.msg.id), new Date(), String(corpo.msg.texto || '').slice(0, 1000), '', '', '']);
+  }
+  (corpo.resp || []).forEach(function (x) {
+    var l = onde[String(x.id)];
+    if (l) s.getRange(l, 4, 1, 3).setValues([[String(x.r || '-').slice(0, 1000), x.p ? 'sim' : '', new Date()]]);
+  });
+  var out = [];
+  var quer = (corpo.ver || []).map(String);
+  if (quer.length) {
+    caixaLinhas_(s).forEach(function (r) {
+      if (quer.indexOf(String(r[0])) >= 0 && r[3] !== '') out.push({ id: String(r[0]), r: String(r[3]), p: r[4] === 'sim' });
+    });
+  }
+  return resposta_({ ok: true, caixa: out });
+}
+
+// Para o PC: mensagens ainda sem resposta dos últimos 2 dias
+function caixaNovas_() {
+  var limite = Date.now() - 2 * 86400000;
+  var novas = [];
+  caixaLinhas_(caixaAba_()).forEach(function (r) {
+    if (r[3] === '' && r[1] && new Date(r[1]).getTime() > limite) novas.push({ id: String(r[0]), t: String(r[2]), em: new Date(r[1]).toISOString() });
+  });
+  return resposta_({ ok: true, novas: novas });
+}
+
 function resposta_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
@@ -55,6 +109,7 @@ function doPost(e) {
     var corpo = JSON.parse(e.postData.contents);
     if (!tokenOk_(corpo.token)) return resposta_({ ok: false, erro: 'código secreto não confere' });
     lock.waitLock(20000);
+    if (corpo.msg || corpo.ver || corpo.resp) return caixa_(corpo);
     // A Nota do computador manda o plano de meta; o celular recebe de volta na resposta.
     if (corpo.plano) PropertiesService.getScriptProperties().setProperty('PLANO', JSON.stringify(corpo.plano));
     var s = aba_();
@@ -106,6 +161,7 @@ function doGet(e) {
   if (!tokenOk_(p.token)) {
     return ContentService.createTextOutput('ERRO;codigo').setMimeType(ContentService.MimeType.TEXT);
   }
+  if (p.caixa) return caixaNovas_();
   var dias = Math.max(1, Math.min(60, Number(p.dias) || 14));
   var s = aba_();
   var ultima = s.getLastRow();

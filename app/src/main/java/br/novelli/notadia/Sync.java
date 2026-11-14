@@ -128,7 +128,7 @@ public class Sync {
     }
 
     /** O Apps Script responde ao POST com um redirecionamento; seguimos à mão para ler o resultado. */
-    private static String postar(String url, String corpo) throws Exception {
+    static String postar(String url, String corpo) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setRequestMethod("POST");
         c.setDoOutput(true);

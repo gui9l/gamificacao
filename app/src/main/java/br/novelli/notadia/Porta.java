@@ -136,7 +136,23 @@ public class Porta extends Service {
         try { registerReceiver(tela, f); } catch (Throwable e) { }
     }
 
+    /** Redesenha a notificação (a resposta do Jarvis pode chegar de outra thread). */
+    private final Runnable redesenhar = new Runnable() {
+        @Override public void run() {
+            h.post(new Runnable() { @Override public void run() { emPrimeiroPlano(); } });
+            h.removeCallbacks(voltarPadrao);
+            h.postDelayed(voltarPadrao, Jarvis.MOSTRA_MS + 2000);
+        }
+    };
+    private final Runnable voltarPadrao = new Runnable() { @Override public void run() { emPrimeiroPlano(); } };
+
     @Override public int onStartCommand(Intent i, int flags, int id) {
+        if (i != null && Jarvis.ACAO.equals(i.getAction())) {
+            String t = Jarvis.textoDe(i);
+            if (!t.isEmpty()) Jarvis.enviar(this, t, redesenhar);
+            else emPrimeiroPlano();
+            return START_STICKY;
+        }
         emPrimeiroPlano();
         h.removeCallbacks(sonda);
         h.post(sonda);
@@ -158,12 +174,15 @@ public class Porta extends Service {
             NotificationChannel ch = new NotificationChannel(CANAL, "Porta", NotificationManager.IMPORTANCE_MIN);
             ch.setShowBadge(false);
             nm.createNotificationChannel(ch);
-            Notification n = new Notification.Builder(this, CANAL)
+            String jv = Jarvis.linha(this);
+            Notification.Builder b = new Notification.Builder(this, CANAL)
                     .setSmallIcon(android.R.drawable.ic_menu_view)
-                    .setContentTitle("Nota do dia · Porta")
-                    .setContentText("Vigiando Instagram e TikTok")
-                    .setOngoing(true)
-                    .build();
+                    .setContentTitle(jv.isEmpty() ? "Nota do dia · Porta" : "Jarvis")
+                    .setContentText(jv.isEmpty() ? "Vigiando Instagram e TikTok" : jv)
+                    .setOngoing(true);
+            if (!jv.isEmpty()) b.setStyle(new Notification.BigTextStyle().bigText(jv));
+            Jarvis.acoes(this, b);
+            Notification n = b.build();
             if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             else startForeground(NOTIF_ID, n);
         } catch (Throwable e) { }
