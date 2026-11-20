@@ -174,13 +174,15 @@ public class Porta extends Service {
             NotificationChannel ch = new NotificationChannel(CANAL, "Porta", NotificationManager.IMPORTANCE_MIN);
             ch.setShowBadge(false);
             nm.createNotificationChannel(ch);
-            String jv = Jarvis.linha(this);
+            String jv = Jarvis.linha(this), cd = Cards.linha(this);
             Notification.Builder b = new Notification.Builder(this, CANAL)
                     .setSmallIcon(android.R.drawable.ic_menu_view)
                     .setContentTitle(jv.isEmpty() ? "Nota do dia · Porta" : "Jarvis")
-                    .setContentText(jv.isEmpty() ? "Vigiando Instagram e TikTok" : jv)
+                    .setContentText(jv.isEmpty() ? (cd.isEmpty() ? "Vigiando Instagram e TikTok" : cd) : jv)
                     .setOngoing(true);
-            if (!jv.isEmpty()) b.setStyle(new Notification.BigTextStyle().bigText(jv));
+            if (!jv.isEmpty()) b.setStyle(new Notification.BigTextStyle().bigText(cd.isEmpty() ? jv : jv + "
+" + cd));
+            if (!cd.isEmpty()) b.setContentIntent(Cards.abrir(this));   // tocar na notificação abre a revisão no AnkiDroid
             Jarvis.acoes(this, b);
             Notification n = b.build();
             if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
