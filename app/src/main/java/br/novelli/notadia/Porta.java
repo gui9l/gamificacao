@@ -180,8 +180,7 @@ public class Porta extends Service {
                     .setContentTitle(jv.isEmpty() ? "Nota do dia · Porta" : "Jarvis")
                     .setContentText(jv.isEmpty() ? (cd.isEmpty() ? "Vigiando Instagram e TikTok" : cd) : jv)
                     .setOngoing(true);
-            if (!jv.isEmpty()) b.setStyle(new Notification.BigTextStyle().bigText(cd.isEmpty() ? jv : jv + "
-" + cd));
+            if (!jv.isEmpty()) b.setStyle(new Notification.BigTextStyle().bigText(cd.isEmpty() ? jv : jv + "\n" + cd));
             if (!cd.isEmpty()) b.setContentIntent(Cards.abrir(this));   // tocar na notificação abre a revisão no AnkiDroid
             Jarvis.acoes(this, b);
             Notification n = b.build();
