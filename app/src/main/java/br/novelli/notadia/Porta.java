@@ -443,12 +443,14 @@ public class Porta extends Service {
         try {
             SharedPreferences p = Sync.prefs(this);
             if (p.getLong("resumoTs", 0) == 0) return "";
-            int total = p.getInt("totalHoje", 0);
+            // a meta é de Insta + TikTok; antes comparava o tempo de tela TOTAL com ela ("3h20 de 1h")
+            int util = p.getInt("insMin", 0) + p.getInt("tikMin", 0);
             int meta = 0;
             String pl = p.getString("plano", "");
             if (pl.length() > 0) meta = Avisos.metaDoDia(new JSONObject(pl));
-            String s = "Hoje: " + Avisos.hm(total) + (meta > 0 ? " de " + Avisos.hm(meta) : "");
+            String s = "Insta + TikTok hoje: " + Avisos.hm(util) + (meta > 0 ? " de " + Avisos.hm(meta) : "");
             s += "\nInstagram " + p.getInt("insAb", 0) + " aberturas · TikTok " + p.getInt("tikAb", 0);
+            s += "\nTela total " + Avisos.hm(p.getInt("totalHoje", 0));
             return s;
         } catch (Throwable e) { return ""; }
     }
