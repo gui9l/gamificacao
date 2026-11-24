@@ -14,7 +14,7 @@
 
 var ABA = 'uso';
 var CABECALHO = ['data', 'total_min', 'insta_min', 'tiktok_min', 'insta_aberturas', 'tiktok_aberturas', 'apps_json', 'atualizado_em',
-                 'porta_expulsoes', 'porta_saidas', 'porta_reentradas', 'porta_espera_max'];
+                 'porta_expulsoes', 'porta_saidas', 'porta_reentradas', 'porta_espera_max', 'horas_json', 'porta_cards'];
 var INSTA = ['com.instagram.android', 'com.instagram.lite'];
 var TIKTOK = ['com.zhiliaoapp.musically', 'com.ss.android.ugc.trill'];
 
@@ -28,6 +28,7 @@ function aba_() {
     s.setFrozenRows(1);
   }
   if (s.getRange(1, 9).getValue() === '') s.getRange(1, 9, 1, 4).setValues([CABECALHO.slice(8, 12)]);  // planilha antiga: títulos das colunas novas
+  if (s.getRange(1, 13).getValue() === '') s.getRange(1, 13, 1, 2).setValues([CABECALHO.slice(12, 14)]);
   return s;
 }
 
@@ -134,15 +135,17 @@ function doPost(e) {
         s.getRange(onde, 1, 1, linha.length).setValues([linha]);
       } else {
         s.appendRow(linha);
-        linhaDe[String(d.date)] = s.getLastRow();
-        s.getRange(s.getLastRow(), 1).setNumberFormat('@').setValue(String(d.date));
+        onde = linhaDe[String(d.date)] = s.getLastRow();
+        s.getRange(onde, 1).setNumberFormat('@').setValue(String(d.date));
       }
+      if (d.horas) s.getRange(onde, 13).setValue(JSON.stringify(d.horas));   // minutos de Insta + TikTok por hora
     });
     // Contadores de hoje da Porta (expulsões, saídas por conta, reentradas que esperaram a trava, maior espera)
     if (corpo.porta && corpo.porta.date) {
       var ondeP = linhaDe[String(corpo.porta.date)];
       if (ondeP) s.getRange(ondeP, 9, 1, 4).setValues([[Number(corpo.porta.exp) || 0, Number(corpo.porta.sai) || 0,
                                                         Number(corpo.porta.ree) || 0, Number(corpo.porta.espMax) || 0]]);
+      if (ondeP && corpo.porta.card !== undefined) s.getRange(ondeP, 14).setValue(Number(corpo.porta.card) || 0);
       PropertiesService.getScriptProperties().setProperty('PORTA_LIGADA', String(!!corpo.porta.ligada));
     }
     var pl = PropertiesService.getScriptProperties().getProperty('PLANO');
@@ -154,6 +157,26 @@ function doPost(e) {
   }
 }
 
+// Para o PC: ?token=...&extra=1&dias=8 → os apps de cada dia (para ver para onde vai o resto da tela), as horas de
+// Insta + TikTok e as trocas por cards na Porta. JSON: { ok, dias: [ { data, apps: [{pkg,name,min,opens}], horas: [24], cards } ] }
+function extra_(dias) {
+  var s = aba_();
+  var ultima = s.getLastRow();
+  var out = [];
+  if (ultima > 1) {
+    var v = s.getRange(2, 1, ultima - 1, 14).getValues();
+    v.sort(function (a, b) { return String(a[0]) < String(b[0]) ? -1 : 1; });
+    v.slice(Math.max(0, v.length - dias)).forEach(function (r) {
+      var apps = [], horas = null;
+      try { apps = JSON.parse(r[6] || '[]'); } catch (x) {}
+      try { horas = r[12] ? JSON.parse(r[12]) : null; } catch (x) {}
+      out.push({ data: String(r[0]), apps: apps.map(function (a) { return { pkg: a.pkg, name: a.name, min: a.min, opens: a.opens }; }),
+                 horas: horas, cards: r[13] === '' ? null : Number(r[13]) || 0 });
+    });
+  }
+  return resposta_({ ok: true, dias: out });
+}
+
 // Entrega para a Nota do computador: ?token=...&dias=14
 // Uma linha por dia:  data;total;insta_min;tiktok_min;insta_aberturas;tiktok_aberturas;enviado_em;expulsoes;saidas;reentradas;espera_max
 function doGet(e) {
@@ -162,6 +185,7 @@ function doGet(e) {
     return ContentService.createTextOutput('ERRO;codigo').setMimeType(ContentService.MimeType.TEXT);
   }
   if (p.caixa) return caixaNovas_();
+  if (p.extra) return extra_(Math.max(1, Math.min(30, Number(p.dias) || 8)));
   var dias = Math.max(1, Math.min(60, Number(p.dias) || 14));
   var s = aba_();
   var ultima = s.getLastRow();

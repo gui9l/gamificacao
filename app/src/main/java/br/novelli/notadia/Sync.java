@@ -59,6 +59,7 @@ public class Sync {
                 porta.put("sai", Cfg.contDia(c, "sai"));
                 porta.put("ree", Cfg.contDia(c, "ree"));
                 porta.put("espMax", Cfg.contDia(c, "espMax"));
+                porta.put("card", Cfg.contDia(c, "card"));   // vezes que trocou o feed pelos cards na Porta
                 porta.put("ligada", Cfg.portaLigada(c));
                 corpo.put("porta", porta);
                 String resp = postar(url, corpo.toString());

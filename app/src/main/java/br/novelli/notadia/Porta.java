@@ -72,7 +72,8 @@ public class Porta extends Service {
     private long ultSaidaTs = 0;              // última vez que saiu do app (por conta, expulso ou tela apagada)
     private int degraus = 0;                  // reentradas seguidas depois de expulso (sobe a espera)
     private boolean escada = false;           // já foi expulso nesta sequência
-    private int esperaAtual = 0;              // segundos que esta tela de escolha está exigindo
+    private int esperaAtual = 0;
+    private boolean riscoAgora = false;       // horário em que ele mais usa (vem do PC): espera até na 1ª entrada              // segundos que esta tela de escolha está exigindo
 
     // pílula no topo (últimos 2 min)
     private TextView pilula;
@@ -256,7 +257,9 @@ public class Porta extends Service {
             guardadoNaSaida = 0;
             if (ultSaidaTs > 0 && agora - ultSaidaTs > Cfg.esperaResetMs(this)) { escada = false; degraus = 0; }  // ficou fora: volta ao começo
             esperaAtual = escada ? Cfg.esperaDa(this, degraus) : 0;
-            mostrarEscolha(escada && esperaAtual > 0);
+            riscoAgora = Cfg.horaDeRisco(this);
+            if (riscoAgora) esperaAtual = Math.max(esperaAtual, Cfg.esperaRisco(this));
+            mostrarEscolha(esperaAtual > 0);
         }
         sincronizarSePreciso();
     }
@@ -449,7 +452,7 @@ public class Porta extends Service {
             String pl = p.getString("plano", "");
             if (pl.length() > 0) meta = Avisos.metaDoDia(new JSONObject(pl));
             String s = "Insta + TikTok hoje: " + Avisos.hm(util) + (meta > 0 ? " de " + Avisos.hm(meta) : "");
-            s += "\nInstagram " + p.getInt("insAb", 0) + " aberturas · TikTok " + p.getInt("tikAb", 0);
+            s += "\nInstagram " + p.getInt("insAb", 0) + " sessões · TikTok " + p.getInt("tikAb", 0);
             s += "\nTela total " + Avisos.hm(p.getInt("totalHoje", 0));
             return s;
         } catch (Throwable e) { return ""; }
@@ -464,7 +467,29 @@ public class Porta extends Service {
         col.setBackgroundColor(BG);
         col.setPadding(dp(28), dp(28), dp(28), dp(28));
 
-        col.addView(tv(espera ? "Você acabou de ser tirado do app" : "Antes de entrar", 22, true, espera ? VERM : TXT));
+        boolean tirado = espera && escada;
+        col.addView(tv(tirado ? "Você acabou de ser tirado do app" : riscoAgora ? "Horário de risco" : "Antes de entrar", 22, true,
+                tirado ? VERM : riscoAgora ? 0xFFB7791F : TXT));
+        if (riscoAgora && !tirado) {
+            LinearLayout.LayoutParams lr = new LinearLayout.LayoutParams(-1, -2);
+            lr.topMargin = dp(6);
+            col.addView(tv("É neste horário que o feed mais te pega.", 14, false, SUAVE), lr);
+        }
+        final int nCards = Cards.pendentes(this);
+        if (nCards > 0) {   // troca o impulso por revisão: abre o AnkiDroid no baralho Aulas
+            Button rc = new Button(this);
+            rc.setText("Revisar " + nCards + " cards no lugar");
+            rc.setAllCaps(false); rc.setTextSize(16); rc.setTypeface(Typeface.DEFAULT_BOLD);
+            rc.setTextColor(Color.WHITE);
+            rc.setBackground(forma(0xFF2F7D57, 12));
+            rc.setStateListAnimator(null);
+            rc.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { trocarPorCards(); }
+            });
+            LinearLayout.LayoutParams lc = new LinearLayout.LayoutParams(-1, dp(54));
+            lc.topMargin = dp(18);
+            col.addView(rc, lc);
+        }
         String r = resumoHoje();
         if (r.length() > 0) {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
@@ -586,6 +611,16 @@ public class Porta extends Service {
         saiuConsciente = false;
         expulsoTs = 0;
         if (emAlvo) iniciarTick();
+    }
+
+    /** Ele escolheu os cards em vez do feed: conta a troca, sai do app e abre a revisão. */
+    private void trocarPorCards() {
+        try { Cfg.somarDia(this, "card"); } catch (Throwable e) { }
+        ultSaidaTs = SystemClock.elapsedRealtime();
+        ignorarAte = SystemClock.elapsedRealtime() + 1500;
+        emAlvo = false;
+        try { startActivity(Cards.intent()); } catch (Throwable e) { irParaInicio(false); }
+        removerOverlay();
     }
 
     private void voltar() {

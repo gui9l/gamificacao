@@ -18,20 +18,30 @@ final class Cards {
 
     private Cards() { }
 
+    /** Cards para revisar hoje (vem do PC); -1 se o plano não traz ou é de outro dia. */
+    static int pendentes(Context c) {
+        JSONObject p = Cfg.plano(c);
+        if (!p.has("cards")) return -1;
+        String hoje = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
+        if (!hoje.equals(p.optString("data"))) return -1;   // plano de outro dia: o número já não vale
+        return p.optInt("cards", 0);
+    }
+
     /** Linha da notificação; vazia se o PC não mandou os cards de hoje. */
     static String linha(Context c) {
-        JSONObject p = Cfg.plano(c);
-        if (!p.has("cards")) return "";
-        String hoje = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
-        if (!hoje.equals(p.optString("data"))) return "";   // plano de outro dia: o número já não vale
-        int n = p.optInt("cards", 0);
+        int n = pendentes(c);
+        if (n < 0) return "";
         return n > 0 ? "Cards de hoje: " + n + " · revisar" : "Cards de hoje: em dia ✓";
     }
 
-    static PendingIntent abrir(Context c) {
-        Intent i = new Intent().setComponent(new ComponentName(ANKI, ANKI + ".IntentHandler"))
+    static Intent intent() {
+        return new Intent().setComponent(new ComponentName(ANKI, ANKI + ".IntentHandler"))
                 .putExtra("EXTRA_DECK_ID", BARALHO_AULAS)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+    }
+
+    static PendingIntent abrir(Context c) {
+        Intent i = intent();
         int fl = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0);
         return PendingIntent.getActivity(c, 80, i, fl);
     }

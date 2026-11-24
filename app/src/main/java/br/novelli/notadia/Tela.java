@@ -378,8 +378,8 @@ public class Tela {
                 lMeta.setText("Abra a Nota no computador para enviar a meta do dia.");
                 lMeta.setTextColor(SUAVE);
             }
-            lInsta.setText("Instagram   " + Avisos.hm(p.getInt("insMin", 0)) + "  ·  " + p.getInt("insAb", 0) + " aberturas");
-            lTik.setText("TikTok         " + Avisos.hm(p.getInt("tikMin", 0)) + "  ·  " + p.getInt("tikAb", 0) + " aberturas");
+            lInsta.setText("Instagram   " + Avisos.hm(p.getInt("insMin", 0)) + "  ·  " + p.getInt("insAb", 0) + " sessões");
+            lTik.setText("TikTok         " + Avisos.hm(p.getInt("tikMin", 0)) + "  ·  " + p.getInt("tikAb", 0) + " sessões");
         }
         anel.invalidate();
         try {

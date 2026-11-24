@@ -27,6 +27,14 @@ import java.util.Map;
  */
 public class Coletor {
 
+    /** Aberturas do mesmo app com menos disso de intervalo contam como UMA sessão (o "abre, olha e fecha"
+     *  e a volta depois de a Porta tirar do app não viram sessões novas). */
+    static final long SESSAO_MS = 3 * 60_000L;
+    static final String[] FEED = {"com.instagram.android", "com.instagram.lite", "com.zhiliaoapp.musically", "com.ss.android.ugc.trill"};
+
+    private Map<String, Long> fechadoEm = new HashMap<>();
+    private long[] horasMs = new long[24];
+
     private final Context ctx;
     private final UsageStatsManager usm;
     private final PackageManager pm;
@@ -78,16 +86,38 @@ public class Coletor {
         return out;
     }
 
+    private static boolean feed(String p) {
+        for (String f : FEED) if (f.equals(p)) return true;
+        return false;
+    }
+
     private void fechar(Map<String, Long> ms, String pkg, long ini, long fim) {
         long dur = fim - ini;
         if (dur <= 0 || dur > 12L * 3600_000L || ignorar(pkg)) return;
         Long atual = ms.get(pkg);
         ms.put(pkg, (atual == null ? 0L : atual) + dur);
+        fechadoEm.put(pkg, fim);
+        if (feed(pkg)) {   // reparte o tempo de Insta + TikTok pelas horas do relógio
+            Calendar c = Calendar.getInstance();
+            long a = ini;
+            while (a < fim) {
+                c.setTimeInMillis(a);
+                int hr = c.get(Calendar.HOUR_OF_DAY);
+                c.set(Calendar.MINUTE, 0); c.set(Calendar.SECOND, 0); c.set(Calendar.MILLISECOND, 0);
+                c.add(Calendar.HOUR_OF_DAY, 1);
+                long b = Math.min(fim, c.getTimeInMillis());
+                horasMs[hr] += b - a;
+                a = b;
+            }
+        }
     }
 
     private JSONObject dia(String data, long ini, long fim) throws Exception {
         final Map<String, Long> ms = new HashMap<>();
         Map<String, Integer> aberturas = new HashMap<>();
+        Map<String, Integer> brutas = new HashMap<>();
+        fechadoEm = new HashMap<>();
+        horasMs = new long[24];
 
         UsageEvents ev = usm.queryEvents(ini, fim);
         UsageEvents.Event e = new UsageEvents.Event();
@@ -107,8 +137,13 @@ public class Coletor {
                 if (cur != null) fechar(ms, cur, curIni, ts);
                 boolean continuacao = p.equals(ultFechado) && ts - ultFechadoTs < 2500;
                 if (!continuacao && !ignorar(p)) {
-                    Integer a = aberturas.get(p);
-                    aberturas.put(p, (a == null ? 0 : a) + 1);
+                    Integer r = brutas.get(p);
+                    brutas.put(p, (r == null ? 0 : r) + 1);
+                    Long fe = fechadoEm.get(p);
+                    if (fe == null || ts - fe >= SESSAO_MS) {   // sessão nova só depois de 3 min longe do app
+                        Integer a = aberturas.get(p);
+                        aberturas.put(p, (a == null ? 0 : a) + 1);
+                    }
                 }
                 cur = p;
                 curIni = ts;
@@ -148,12 +183,13 @@ public class Coletor {
         for (int i = 0; i < max; i++) {
             String p = pacotes.get(i);
             Long m = ms.get(p);
-            Integer a = aberturas.get(p);
+            Integer a = aberturas.get(p), r = brutas.get(p);
             JSONObject o = new JSONObject();
             o.put("pkg", p);
             o.put("name", rotulo(p));
             o.put("min", Math.round((m == null ? 0 : m) / 60000.0));
-            o.put("opens", a == null ? 0 : a);
+            o.put("opens", a == null ? 0 : a);          // sessões (aberturas a 3 min ou mais uma da outra)
+            o.put("abRaw", r == null ? 0 : r);          // aberturas cruas, só para referência
             apps.put(o);
         }
 
@@ -161,6 +197,9 @@ public class Coletor {
         d.put("date", data);
         d.put("total", Math.round(totalMs / 60000.0));
         d.put("apps", apps);
+        JSONArray horas = new JSONArray();   // minutos de Insta + TikTok em cada hora do dia (0h…23h)
+        for (long v : horasMs) horas.put(Math.round(v / 60000.0));
+        d.put("horas", horas);
         return d;
     }
 
