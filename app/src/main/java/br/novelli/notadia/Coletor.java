@@ -64,6 +64,29 @@ public class Coletor {
                 || p.equals(ctx.getPackageName());
     }
 
+    /** Minutos de Insta + TikTok entre ini e agora (o app aberto agora conta até este instante). */
+    public long feedMs(long ini) {
+        long fim = System.currentTimeMillis(), soma = 0, curIni = 0;
+        String cur = null;
+        UsageEvents ev = usm.queryEvents(ini, fim);
+        UsageEvents.Event e = new UsageEvents.Event();
+        while (ev.hasNextEvent()) {
+            ev.getNextEvent(e);
+            int t = e.getEventType();
+            String p = e.getPackageName();
+            long ts = e.getTimeStamp();
+            if (t == 1) {
+                if (cur != null && feed(cur)) soma += ts - curIni;
+                cur = p; curIni = ts;
+            } else if ((t == 2 && p.equals(cur)) || t == 16 || t == 17) {
+                if (cur != null && feed(cur)) soma += ts - curIni;
+                cur = null;
+            }
+        }
+        if (cur != null && feed(cur)) soma += fim - curIni;
+        return soma;
+    }
+
     /** Últimos N dias (do mais antigo para o de hoje). */
     public JSONArray coletar(int dias) throws Exception {
         JSONArray out = new JSONArray();

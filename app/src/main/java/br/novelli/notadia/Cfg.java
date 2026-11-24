@@ -58,17 +58,18 @@ final class Cfg {
     /** Minutos fora do app para a espera voltar ao começo. Vem do PC; padrão 5. */
     static long esperaResetMs(Context c) { return Math.max(1, plano(c).optInt("espReset", 5)) * 60000L; }
 
-    /** Horário de risco: horas (0–23) em que ele mais usa Insta + TikTok; o PC calcula e manda no plano.
-     *  Nessas horas, até a primeira entrada pede uma espera (espRisco s, padrão 10). */
-    static boolean horaDeRisco(Context c) {
-        org.json.JSONArray r = plano(c).optJSONArray("risco");
-        if (r == null) return false;
-        int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
-        for (int i = 0; i < r.length(); i++) if (r.optInt(i, -1) == h) return true;
-        return false;
+    /** Modo rígido: se já passou de riscoMin minutos de Insta + TikTok na última hora (o PC manda; padrão 20),
+     *  devolve esses minutos; senão -1. Almoço tranquilo não dispara; maratona dispara a qualquer hora. */
+    static int minutosEmRisco(Context c) {
+        int lim = plano(c).optInt("riscoMin", 20);
+        if (lim <= 0) return -1;
+        try {
+            int m = (int) (new Coletor(c).feedMs(System.currentTimeMillis() - 3600_000L) / 60000L);
+            return m >= lim ? m : -1;
+        } catch (Throwable e) { return -1; }
     }
 
-    static int esperaRisco(Context c) { return Math.max(0, Math.min(60, plano(c).optInt("espRisco", 10))); }
+    static int esperaRisco(Context c) { return Math.max(0, Math.min(60, plano(c).optInt("espRisco", 15))); }
 
     static int esperaDa(Context c, int reentradas) { return Math.min(60, esperaBase(c) + esperaPasso(c) * Math.max(0, reentradas)); }
 

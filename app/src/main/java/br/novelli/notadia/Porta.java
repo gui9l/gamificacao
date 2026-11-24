@@ -73,7 +73,8 @@ public class Porta extends Service {
     private int degraus = 0;                  // reentradas seguidas depois de expulso (sobe a espera)
     private boolean escada = false;           // já foi expulso nesta sequência
     private int esperaAtual = 0;
-    private boolean riscoAgora = false;       // horário em que ele mais usa (vem do PC): espera até na 1ª entrada              // segundos que esta tela de escolha está exigindo
+    private boolean riscoAgora = false;       // já passou de X min de feed na última hora: espera maior e só o menor tempo
+    private int minRisco = -1;              // segundos que esta tela de escolha está exigindo
 
     // pílula no topo (últimos 2 min)
     private TextView pilula;
@@ -257,7 +258,8 @@ public class Porta extends Service {
             guardadoNaSaida = 0;
             if (ultSaidaTs > 0 && agora - ultSaidaTs > Cfg.esperaResetMs(this)) { escada = false; degraus = 0; }  // ficou fora: volta ao começo
             esperaAtual = escada ? Cfg.esperaDa(this, degraus) : 0;
-            riscoAgora = Cfg.horaDeRisco(this);
+            minRisco = Cfg.minutosEmRisco(this);
+            riscoAgora = minRisco >= 0;
             if (riscoAgora) esperaAtual = Math.max(esperaAtual, Cfg.esperaRisco(this));
             mostrarEscolha(esperaAtual > 0);
         }
@@ -468,12 +470,12 @@ public class Porta extends Service {
         col.setPadding(dp(28), dp(28), dp(28), dp(28));
 
         boolean tirado = espera && escada;
-        col.addView(tv(tirado ? "Você acabou de ser tirado do app" : riscoAgora ? "Horário de risco" : "Antes de entrar", 22, true,
+        col.addView(tv(tirado ? "Você acabou de ser tirado do app" : riscoAgora ? "Modo rígido" : "Antes de entrar", 22, true,
                 tirado ? VERM : riscoAgora ? 0xFFB7791F : TXT));
-        if (riscoAgora && !tirado) {
+        if (riscoAgora) {
             LinearLayout.LayoutParams lr = new LinearLayout.LayoutParams(-1, -2);
             lr.topMargin = dp(6);
-            col.addView(tv("É neste horário que o feed mais te pega.", 14, false, SUAVE), lr);
+            col.addView(tv("Já foram " + minRisco + " min de feed na última hora.", 14, false, SUAVE), lr);
         }
         final int nCards = Cards.pendentes(this);
         if (nCards > 0) {   // troca o impulso por revisão: abre o AnkiDroid no baralho Aulas
@@ -515,7 +517,7 @@ public class Porta extends Service {
         LinearLayout linha = new LinearLayout(this);
         linha.setOrientation(LinearLayout.HORIZONTAL);
         linha.setGravity(Gravity.CENTER);
-        final int[] opcoes = Cfg.opcoes(this);
+        final int[] opcoes = riscoAgora ? new int[]{Cfg.opcoes(this)[0]} : Cfg.opcoes(this);   // rígido: só o menor tempo
         final Button[] bs = new Button[opcoes.length];
         for (int i = 0; i < opcoes.length; i++) {
             final int min = opcoes[i];
